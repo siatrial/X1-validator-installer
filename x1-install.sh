@@ -145,6 +145,7 @@ while [ "$attempt" -lt "$max_attempts" ]; do
         print_color "error" "Faucet request failed: $wait_message"
     elif echo "$response" | grep -q '"success":true'; then
         print_color "success" "5 SOL requested successfully."
+        break
     else
         print_color "error" "Faucet request failed. Response: $response"
     fi
