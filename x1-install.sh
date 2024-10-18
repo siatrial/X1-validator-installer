@@ -1,5 +1,20 @@
-# Section 5: Wallets Creation - Add checks to prevent duplicate creation
-print_color "info" "\n===== 5/10: Creating Wallets ====="
+# Function to print color-coded messages
+function print_color {
+    case $1 in
+        "info")
+            echo -e "\033[1;34m$2\033[0m"  # Blue for informational
+            ;;
+        "success")
+            echo -e "\033[1;32m$2\033[0m"  # Green for success
+            ;;
+        "error")
+            echo -e "\033[1;31m$2\033[0m"  # Red for errors
+            ;;
+        "prompt")
+            echo -e "\033[1;33m$2\033[0m"  # Yellow for user prompts
+            ;;
+    esac
+}
 
 # Identity wallet
 if [ ! -f "$install_dir/identity.json" ]; then
@@ -42,20 +57,15 @@ else
 fi
 
 # Section 6: Request Faucet Funds - Add retry logic
-print_color "info" "\n===== 6/10: Requesting Faucet Funds ====="
-attempt=0
-max_attempts=5
-while [ "$attempt" -lt "$max_attempts" ]; do
-    request_faucet $identity_pubkey
-    balance=$(solana balance $identity_pubkey)
-    
-    if [ "$balance" != "0 SOL" ]; then
-        print_color "success" "Identity funded with $balance."
-        break
+request_faucet() {
+    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$1\"}" https://xolana.xen.network/faucet)
+    if echo "$response" | grep -q "Please wait"; then
+        wait_message=$(echo "$response" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
+        print_color "error" "Faucet request failed: $wait_message"
+    elif echo "$response" | grep -q '"success":true'; then
+        print_color "success" "5 SOL requested successfully."
     else
-        print_color "error" "Failed to get 5 SOL. Retrying... ($((attempt + 1))/$max_attempts)"
-        attempt=$((attempt + 1))
-        sleep 10
+        print_color "error" "Faucet request failed. Response: $response"
     fi
 done
 
