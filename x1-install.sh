@@ -134,6 +134,15 @@ else
     print_color "info" "Withdrawer wallet already exists: $withdrawer_pubkey"
 fi
 
+# Display generated keys and pause for user to save them
+print_color "info" "\n\nPlease save the following keys:\n"
+print_color "info" "Identity Public Key: $identity_pubkey"
+print_color "info" "Vote Public Key: $vote_pubkey"
+print_color "info" "Stake Public Key: $stake_pubkey"
+print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
+print_color "prompt" "\nPress Enter after saving the keys."
+read -r
+
 # Section 6: Request Faucet Funds - Add retry logic
 print_color "info" "\n===== 6/10: Requesting Faucet Funds ====="
 attempt=0
