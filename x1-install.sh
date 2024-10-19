@@ -284,7 +284,7 @@ if [ "$vote_account_exists" == "true" ]; then
         print_color "info" "Vote account already exists and is owned by the correct identity."
     fi
 else
-    solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 5 >&3 2>&1
+    solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 5 >&3
     print_color "success" "Vote account created."
 fi
 
@@ -310,6 +310,10 @@ fi
 print_color "prompt" "Enter any additional solana-validator options (or press Enter to skip):"
 read additional_options
 
+# Create ledger directory
+ledger_dir="$install_dir/ledger"
+mkdir -p "$ledger_dir"
+
 # Create a systemd service file
 sudo tee /etc/systemd/system/solana-validator.service > /dev/null <<EOL
 [Unit]
@@ -318,9 +322,11 @@ After=network-online.target
 
 [Service]
 User=$USER
+WorkingDirectory=$install_dir
 ExecStart=$(which solana-validator) \\
     --identity $install_dir/identity.json \\
     --vote-account $install_dir/vote.json \\
+    --ledger $ledger_dir \\
     --rpc-port $rpc_port \\
     --entrypoint $entrypoint \\
     --full-rpc-api \\
