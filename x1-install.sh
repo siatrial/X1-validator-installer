@@ -172,7 +172,7 @@ fi
 # Add Solana to PATH in profile files for future sessions
 profile_files=(~/.profile ~/.bashrc ~/.zshrc)
 for profile in "${profile_files[@]}"; do
-    if [ -f "$profile" ]; then
+    if [ -f "$profile" ];then
         if ! grep -q 'solana/install/active_release/bin' "$profile"; then
             echo 'export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"' >> "$profile"
             print_color "info" "Added Solana to PATH in $profile"
@@ -188,13 +188,13 @@ print_color "info" "\n===== 4/10: Switch to Xolana Network ====="
 default_network_url="http://xolana.xen.network:8899"
 print_color "prompt" "Enter the network RPC URL (press Enter for default: $default_network_url):"
 read network_url
-if [ -z "$network_url" ]; then
+if [ -z "$network_url" ];then
     network_url=$default_network_url
 fi
 
 solana config set -u "$network_url" > /dev/null 2>&1
 network_url_set=$(solana config get | grep 'RPC URL' | awk '{print $NF}')
-if [ "$network_url_set" != "$network_url" ]; then
+if [ "$network_url_set" != "$network_url" ];then
     print_color "error" "Failed to switch to network $network_url."
     exit 1
 fi
@@ -208,13 +208,12 @@ function handle_wallet {
     local wallet_path=$1
     local wallet_name=$2
 
-    if [ -f "$wallet_path" ]; then
+    if [ -f "$wallet_path" ];then
         print_color "prompt" "$wallet_name wallet already exists at '$wallet_path'. Do you want to reuse it? [y/n]"
         read reuse_choice
         if [[ "$reuse_choice" =~ ^[Yy]$ ]]; then
-            local pubkey
             pubkey=$(solana-keygen pubkey "$wallet_path")
-            if [ -z "$pubkey" ]; then
+            if [ -z "$pubkey" ];then
                 print_color "error" "Failed to retrieve public key from existing $wallet_name wallet."
                 exit 1
             fi
@@ -223,30 +222,27 @@ function handle_wallet {
         else
             # Create a new wallet
             solana-keygen new $passphrase_option --outfile "$wallet_path" > /dev/null 2>&1
-            local new_pubkey
-            new_pubkey=$(solana-keygen pubkey "$wallet_path")
-            if [ -z "$new_pubkey" ]; then
+            pubkey=$(solana-keygen pubkey "$wallet_path")
+            if [ -z "$pubkey" ];then
                 print_color "error" "Error creating new $wallet_name wallet."
                 exit 1
             fi
-            print_color "success" "New $wallet_name wallet created: $new_pubkey"
-            echo "$new_pubkey"
+            print_color "success" "New $wallet_name wallet created: $pubkey"
+            echo "$pubkey"
         fi
     else
         # Create a new wallet
         solana-keygen new $passphrase_option --outfile "$wallet_path" > /dev/null 2>&1
-        local new_pubkey
-        new_pubkey=$(solana-keygen pubkey "$wallet_path")
-        if [ -z "$new_pubkey" ]; then
+        pubkey=$(solana-keygen pubkey "$wallet_path")
+        if [ -z "$pubkey" ];then
             print_color "error" "Error creating $wallet_name wallet."
             exit 1
         fi
-        print_color "success" "$wallet_name wallet created: $new_pubkey"
-        echo "$new_pubkey"
+        print_color "success" "$wallet_name wallet created: $pubkey"
+        echo "$pubkey"
     fi
 }
 
-# Create or reuse wallets
 identity_pubkey=$(handle_wallet "$install_dir/identity.json" "Identity")
 vote_pubkey=$(handle_wallet "$install_dir/vote.json" "Vote")
 stake_pubkey=$(handle_wallet "$install_dir/stake.json" "Stake")
@@ -267,15 +263,15 @@ print_color "info" "\n===== 6/10: Funding Identity Wallet ====="
 print_color "info" "Instead of automatically requesting funds from the faucet, please manually fund your Identity wallet with 5 SOL."
 print_color "info" "Use the following public key to receive funds:"
 print_color "info" "$identity_pubkey"
-print_color "info" "\nYou can use any Solana-compatible wallet or exchange to send 5 SOL to this address."
-
 print_color "prompt" "Press Enter once you have funded the Identity wallet."
 read -r
 
-# Optionally, verify the balance
-print_color "info" "Checking the balance of the Identity wallet..."
-balance=$(solana balance "$identity_pubkey")
-if [[ "$balance" != *"0 SOL"* ]]; then
+# Correct balance checking section
+balance=$(solana balance "$identity_pubkey" 2>&1)
+if [[ "$balance" == *"error"* ]]; then
+    print_color "error" "Failed to check wallet balance: $balance"
+    exit 1
+elif [[ "$balance" != *"0 SOL"* ]]; then
     print_color "success" "Identity wallet funded with $balance."
 else
     print_color "error" "Identity wallet still has 0 SOL. Please ensure you have sent 5 SOL to $identity_pubkey."
@@ -286,10 +282,10 @@ fi
 print_color "info" "\n===== 7/10: Creating Vote Account ====="
 
 vote_account_exists=$(solana vote-account "$vote_pubkey" > /dev/null 2>&1 && echo "true" || echo "false")
-if [ "$vote_account_exists" == "true" ]; then
+if [ "$vote_account_exists" == "true" ];then
     vote_account_info=$(solana vote-account "$vote_pubkey" --output json)
     vote_account_owner=$(echo "$vote_account_info" | jq -r '.nodePubkey')
-    if [ "$vote_account_owner" != "$identity_pubkey" ]; then
+    if [ "$vote_account_owner" != "$identity_pubkey" ];then
         print_color "error" "Vote account owner mismatch. Expected $identity_pubkey but got $vote_account_owner."
         exit 1
     else
@@ -307,7 +303,7 @@ print_color "info" "\n===== 8/10: Starting Validator Service ====="
 default_rpc_port=8899
 print_color "prompt" "Please enter a unique RPC port (press Enter for default: $default_rpc_port):"
 read rpc_port
-if [ -z "$rpc_port" ]; then
+if [ -z "$rpc_port" ];then
     rpc_port=$default_rpc_port
 fi
 
@@ -315,7 +311,7 @@ fi
 default_entrypoint="216.202.227.220:8001"
 print_color "prompt" "Enter the entrypoint for the network (press Enter for default: $default_entrypoint):"
 read entrypoint
-if [ -z "$entrypoint" ]; then
+if [ -z "$entrypoint" ];then
     entrypoint=$default_entrypoint
 fi
 
