@@ -92,34 +92,30 @@ solana config set --url "$network_url"
 print_color "success" "Switched to network: $network_url"
 
 # Section 6: Creating Wallets
-print_color "info" "\n===== 6/11: Creating Wallets ====="
 
-# Create wallets with or without passphrase
 identity_keypair_path="$validator_dir/identity.json"
 vote_keypair_path="$validator_dir/vote-account-keypair.json"
 stake_keypair_path="$validator_dir/stake-account-keypair.json"
 withdrawer_keypair_path="$validator_dir/withdrawer-keypair.json"
 
-# Create Identity Keypair
+# Identity Keypair
 if [[ "$passphrase_choice" == "y" || "$passphrase_choice" == "Y" ]]; then
     # User chooses to use a passphrase
-    echo "$wallet_passphrase" | solana-keygen new $wallet_passphrase_option $bip39_passphrase_option -o "$identity_keypair_path"
+    echo "$wallet_passphrase" | solana-keygen new -o "$identity_keypair_path"
 else
     # User chooses not to use a passphrase
-    solana-keygen new $wallet_passphrase_option $bip39_passphrase_option -o "$identity_keypair_path"
+    solana-keygen new --no-passphrase --no-bip39-passphrase -o "$identity_keypair_path"
 fi
 
-# Create Vote Keypair (always without passphrase)
+# Vote Keypair (always without passphrase)
 solana-keygen new --no-passphrase --no-bip39-passphrase -o "$vote_keypair_path"
 
-# Create Stake Keypair (always without passphrase)
+# Stake Keypair (always without passphrase)
 solana-keygen new --no-passphrase --no-bip39-passphrase -o "$stake_keypair_path"
 
-# Create Withdrawer Keypair (if not exists)
+# Withdrawer Keypair (if not exists)
 if [ ! -f "$withdrawer_keypair_path" ]; then
     solana-keygen new --no-passphrase --no-bip39-passphrase -o "$withdrawer_keypair_path"
-else
-    print_color "warning" "Withdrawer wallet already exists: $(solana-keygen pubkey "$withdrawer_keypair_path")"
 fi
 
 identity_pubkey=$(solana-keygen pubkey "$identity_keypair_path")
