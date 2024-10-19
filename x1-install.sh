@@ -243,7 +243,7 @@ print_color "info" "\n===== 6/10: Funding Identity Wallet ====="
 
 print_color "info" "Use the following public key to receive funds:"
 print_color "info" "$identity_pubkey"
-
+print_color "info" "To fund your wallet, visit the Xolana Faucet at: https://xolana.xen.network/web_faucet"
 print_color "prompt" "Press Enter once you have funded the Identity wallet with at least 5 SOL."
 read -r  # Wait for user input
 
@@ -256,7 +256,7 @@ while true; do
         print_color "error" "Failed to check wallet balance: $balance"
         exit 1
     elif [[ "$balance" == "0 SOL" ]]; then
-        print_color "error" "Identity wallet still has 0 SOL. Please ensure you have sent 5 SOL to $identity_pubkey."
+        print_color "error" "Identity wallet still has 0 SOL. Please ensure you have sent at least 5 SOL to $identity_pubkey."
         print_color "prompt" "Press Enter to check again once you've funded the wallet."
         read -r  # Wait for user to confirm they've funded the wallet
     else
@@ -265,4 +265,51 @@ while true; do
     fi
 done
 
-# Continue with the next steps after successful funding
+# Section 7: Start Validator
+
+print_color "info" "\n===== 7/10: Starting the Validator ====="
+
+print_color "info" "Starting the validator using identity, vote, and stake accounts..."
+
+nohup solana-validator --identity "$install_dir/identity.json" \
+    --vote-account "$install_dir/vote.json" \
+    --rpc-port 8899 \
+    --entrypoint xolana.xen.network:8001 \
+    --full-rpc-api \
+    --log "$install_dir/validator.log" \
+    --max-genesis-archive-unpacked-size 1073741824 \
+    --no-incremental-snapshots \
+    --require-tower \
+    --enable-rpc-transaction-history \
+    --enable-extended-tx-metadata-storage \
+    --skip-startup-ledger-verification \
+    --rpc-pubsub-enable-block-subscription &
+
+print_color "success" "Validator started in the background. Logs are being written to $install_dir/validator.log"
+
+# Tuning the system based on guide recommendations (optional)
+print_color "info" "Tuning system for performance..."
+
+sudo bash -c "cat >/etc/sysctl.d/21-solana-validator.conf <<EOF
+# Increase UDP buffer sizes
+net.core.rmem_default = 134217728
+net.core.rmem_max = 134217728
+net.core.wmem_default = 134217728
+net.core.wmem_max = 134217728
+
+# Increase memory mapped files limit
+vm.max_map_count = 1000000
+
+# Increase number of allowed open file descriptors
+fs.nr_open = 1000000
+EOF"
+
+sudo sysctl -p /etc/sysctl.d/21-solana-validator.conf
+
+sudo bash -c "cat >/etc/security/limits.d/90-solana-nofiles.conf <<EOF
+# Increase process file descriptor count limit
+* - nofile 1000000
+EOF"
+
+sudo systemctl daemon-reload
+print_color "success" "System tuned successfully!"
