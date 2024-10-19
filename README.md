@@ -20,7 +20,11 @@ Ensure you have the following installed on your system:
 To install the X1 Validator on your machine, use the following one-liner command. This command will download the `x1-install.sh` script from the repository, make it executable, and run it:
 
 ```bash
-cd ~ && wget -O ~/x1-install.sh https://raw.githubusercontent.com/siatrial/X1-validator-installer/master/x1-install.sh > /dev/null 2>&1 && chmod +x ~/x1-install.sh > /dev/null 2>&1 && ~/x1-install.sh
+cd ~ && \
+wget -O ~/x1-install.sh https://raw.githubusercontent.com/siatrial/X1-validator-installer/master/x1-install.sh && \
+chmod +x ~/x1-install.sh && \
+~/x1-install.sh
+
 ```
 
 When the installation is completed, you can start your validator using the following command:
