@@ -78,25 +78,6 @@ if [ ${#missing_dependencies[@]} -ne 0 ]; then
     fi
 fi
 
-# Prompt for verbose output
-print_color "prompt" "Do you want to enable verbose output during installation? [y/n]"
-read verbose
-if [[ "$verbose" =~ ^[Yy]$ ]]; then
-    exec 3>&1
-else
-    exec 3>/dev/null
-fi
-
-# Prompt for setting passphrase on wallets
-print_color "prompt" "Do you want to secure your wallets with a passphrase? [y/n]"
-read set_passphrase
-if [[ "$set_passphrase" =~ ^[Yy]$ ]]; then
-    passphrase_option=""
-    print_color "info" "You will be prompted to enter a passphrase for each wallet."
-else
-    passphrase_option="--no-passphrase"
-fi
-
 # Section 1: Setup Validator Directory
 print_color "info" "\n===== 1/10: Validator Directory Setup ====="
 
@@ -221,7 +202,7 @@ function handle_wallet {
             echo "$pubkey"
         else
             # Create a new wallet
-            solana-keygen new $passphrase_option --outfile "$wallet_path" > /dev/null 2>&1
+            solana-keygen new --no-passphrase --outfile "$wallet_path" > /dev/null 2>&1
             pubkey=$(solana-keygen pubkey "$wallet_path")
             if [ -z "$pubkey" ];then
                 print_color "error" "Error creating new $wallet_name wallet."
@@ -232,7 +213,7 @@ function handle_wallet {
         fi
     else
         # Create a new wallet
-        solana-keygen new $passphrase_option --outfile "$wallet_path" > /dev/null 2>&1
+        solana-keygen new --no-passphrase --outfile "$wallet_path" > /dev/null 2>&1
         pubkey=$(solana-keygen pubkey "$wallet_path")
         if [ -z "$pubkey" ];then
             print_color "error" "Error creating $wallet_name wallet."
@@ -285,94 +266,3 @@ while true; do
 done
 
 # Continue with the next steps after successful funding
-
-# Section 7: Create Vote Account - Validate if account exists and has correct owner
-print_color "info" "\n===== 7/10: Creating Vote Account ====="
-
-vote_account_exists=$(solana vote-account "$vote_pubkey" > /dev/null 2>&1 && echo "true" || echo "false")
-if [ "$vote_account_exists" == "true" ];then
-    vote_account_info=$(solana vote-account "$vote_pubkey" --output json)
-    vote_account_owner=$(echo "$vote_account_info" | jq -r '.nodePubkey')
-    if [ "$vote_account_owner" != "$identity_pubkey" ];then
-        print_color "error" "Vote account owner mismatch. Expected $identity_pubkey but got $vote_account_owner."
-        exit 1
-    else
-        print_color "info" "Vote account already exists and is owned by the correct identity."
-    fi
-else
-    solana create-vote-account "$install_dir/vote.json" "$install_dir/identity.json" "$withdrawer_pubkey" --commission 5 >&3 2>&1
-    print_color "success" "Vote account created."
-fi
-
-# Section 8: Start Validator Service with Systemd
-print_color "info" "\n===== 8/10: Starting Validator Service ====="
-
-# Prompt for unique RPC port
-default_rpc_port=8899
-print_color "prompt" "Please enter a unique RPC port (press Enter for default: $default_rpc_port):"
-read rpc_port
-if [ -z "$rpc_port" ];then
-    rpc_port=$default_rpc_port
-fi
-
-# Prompt for entrypoint
-default_entrypoint="216.202.227.220:8001"
-print_color "prompt" "Enter the entrypoint for the network (press Enter for default: $default_entrypoint):"
-read entrypoint
-if [ -z "$entrypoint" ];then
-    entrypoint=$default_entrypoint
-fi
-
-# Prompt for additional validator options
-print_color "prompt" "Enter any additional solana-validator options (or press Enter to skip):"
-read additional_options
-
-# Create a systemd service file
-sudo tee /etc/systemd/system/solana-validator.service > /dev/null <<EOL
-[Unit]
-Description=Solana Validator
-After=network-online.target
-
-[Service]
-User=$USER
-ExecStart=$(which solana-validator) --identity "$install_dir/identity.json" \\
-    --vote-account "$install_dir/vote.json" \\
-    --rpc-port $rpc_port \\
-    --entrypoint $entrypoint \\
-    --full-rpc-api \\
-    --log "$install_dir/validator.log" \\
-    --max-genesis-archive-unpacked-size 1073741824 \\
-    --no-incremental-snapshots \\
-    --require-tower \\
-    --enable-rpc-transaction-history \\
-    --enable-extended-tx-metadata-storage \\
-    --skip-startup-ledger-verification \\
-    --no-poh-speed-test \\
-    --bind-address 0.0.0.0 \\
-    $additional_options
-Restart=always
-LimitNOFILE=1000000
-
-[Install]
-WantedBy=multi-user.target
-EOL
-
-# Reload systemd and start the service
-sudo systemctl daemon-reload
-sudo systemctl enable solana-validator
-sudo systemctl start solana-validator
-print_color "success" "Validator service started and enabled."
-
-# Section 9: Summary and Next Steps
-print_color "success" "\n===== Installation and Setup Complete! ====="
-print_color "info" "Validator is running as a systemd service named 'solana-validator'."
-print_color "info" "You can check the status with: sudo systemctl status solana-validator"
-print_color "info" "Logs are being written to: $install_dir/validator.log"
-print_color "info" "To stop the validator: sudo systemctl stop solana-validator"
-print_color "info" "To view logs: tail -f $install_dir/validator.log"
-
-# Section 10: Optional - Update and Maintenance Tips
-print_color "info" "\n===== 10/10: Optional - Update and Maintenance ====="
-print_color "info" "To update the Solana CLI in the future, run:"
-print_color "info" "  solana-install update"
-print_color "info" "To update the script or re-run it for maintenance, download the latest version from the repository."
