@@ -157,12 +157,19 @@ SOLANA_CLI_VERSION="v1.18.25"
 
 print_color "info" "Installing Solana CLI version $SOLANA_CLI_VERSION..."
 sh -c "$(curl -sSfL https://release.solana.com/$SOLANA_CLI_VERSION/install)" >&3 2>&1
+
+# Update PATH immediately after installation
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+
+# Verify Solana CLI installation
 if ! command -v solana &> /dev/null; then
     print_color "error" "Solana CLI installation failed."
+    print_color "info" "Please manually add Solana to your PATH:"
+    print_color "info" 'export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"'
     exit 1
 fi
 
-# Add Solana to PATH and reload profiles
+# Add Solana to PATH in profile files for future sessions
 profile_files=(~/.profile ~/.bashrc ~/.zshrc)
 for profile in "${profile_files[@]}"; do
     if [ -f "$profile" ]; then
@@ -172,7 +179,7 @@ for profile in "${profile_files[@]}"; do
         fi
     fi
 done
-export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+
 print_color "success" "Solana CLI installed: $(solana --version)"
 
 # Section 4: Switch to Xolana Network
