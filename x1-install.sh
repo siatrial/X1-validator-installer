@@ -45,7 +45,7 @@ else
 fi
 
 # Section 1: Install Dependencies
-print_color "info" "\n===== 1/10: Installing Dependencies ====="
+print_color "info" "\n===== 1/11: Installing Dependencies ====="
 
 # Function to install packages
 function install_package {
@@ -72,13 +72,13 @@ function install_package {
 }
 
 # Install required dependencies
-dependencies=(curl wget jq)
+dependencies=(curl wget jq bc)
 for cmd in "${dependencies[@]}"; do
     install_package $cmd
 done
 
 # Section 2: Setup Validator Directory
-print_color "info" "\n===== 2/10: Validator Directory Setup ====="
+print_color "info" "\n===== 2/11: Validator Directory Setup ====="
 
 default_install_dir="$HOME/x1_validator"
 print_color "prompt" "Validator Directory (press Enter for default: $default_install_dir):"
@@ -105,7 +105,7 @@ cd "$install_dir" || exit 1
 print_color "success" "Directory created: $install_dir"
 
 # Section 3: Install Rust
-print_color "info" "\n===== 3/10: Rust Installation ====="
+print_color "info" "\n===== 3/11: Rust Installation ====="
 
 if ! command -v rustc &> /dev/null; then
     print_color "info" "Installing Rust..."
@@ -121,7 +121,7 @@ else
 fi
 
 # Section 4: Install Solana CLI
-print_color "info" "\n===== 4/10: Solana CLI Installation ====="
+print_color "info" "\n===== 4/11: Solana CLI Installation ====="
 
 # Define the Solana CLI version
 SOLANA_CLI_VERSION="v1.18.25"
@@ -147,7 +147,7 @@ export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 print_color "success" "Solana CLI installed: $(solana --version)"
 
 # Section 5: Switch to Xolana Network
-print_color "info" "\n===== 5/10: Switch to Xolana Network ====="
+print_color "info" "\n===== 5/11: Switch to Xolana Network ====="
 
 default_network_url="http://xolana.xen.network:8899"
 print_color "prompt" "Enter the network RPC URL (default: $default_network_url):"
@@ -165,7 +165,7 @@ fi
 print_color "success" "Switched to network: $network_url"
 
 # Section 6: Wallets Creation
-print_color "info" "\n===== 6/10: Creating Wallets ====="
+print_color "info" "\n===== 6/11: Creating Wallets ====="
 
 # Function to create a wallet if it doesn't exist
 function create_wallet {
@@ -173,7 +173,7 @@ function create_wallet {
     local wallet_name=$2
     local pubkey
     if [ ! -f "$wallet_path" ]; then
-        solana-keygen new $passphrase_option --outfile "$wallet_path" > /dev/null 2>&1
+        solana-keygen new $passphrase_option --outfile "$wallet_path" >&3 2>&1
         pubkey=$(solana-keygen pubkey "$wallet_path")
         if [ -z "$pubkey" ]; then
             print_color "error" "Error creating $wallet_name wallet" >&2
@@ -211,7 +211,7 @@ print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
 # Section 7: Requesting Faucet Funds with User Option
-print_color "info" "\n===== 7/10: Requesting Faucet Funds ====="
+print_color "info" "\n===== 7/11: Requesting Faucet Funds ====="
 attempt=0
 max_attempts=5
 cooldown_wait_time=480  # 8 minutes in seconds
@@ -270,8 +270,26 @@ if [ "$attempt" -eq "$max_attempts" ]; then
     exit 1
 fi
 
-# Section 8: Create Stake Account
-print_color "info" "\n===== 8/10: Creating Stake Account ====="
+# Section 8: Create Vote Account
+print_color "info" "\n===== 8/11: Creating Vote Account ====="
+
+vote_account_exists=$(solana vote-account $vote_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
+if [ "$vote_account_exists" == "true" ]; then
+    vote_account_info=$(solana vote-account $vote_pubkey --output json)
+    vote_account_owner=$(echo "$vote_account_info" | jq -r '.nodePubkey')
+    if [ "$vote_account_owner" != "$identity_pubkey" ]; then
+        print_color "error" "Vote account owner mismatch. Expected $identity_pubkey but got $vote_account_owner."
+        exit 1
+    else
+        print_color "info" "Vote account already exists and is owned by the correct identity."
+    fi
+else
+    solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 5 >&3
+    print_color "success" "Vote account created."
+fi
+
+# Section 9: Create Stake Account
+print_color "info" "\n===== 9/11: Creating Stake Account ====="
 
 stake_account_exists=$(solana stake-account $stake_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
 if [ "$stake_account_exists" == "true" ]; then
@@ -284,16 +302,26 @@ if [ "$stake_account_exists" == "true" ]; then
         print_color "info" "Stake account already exists and is owned by the correct program."
     fi
 else
-    solana create-stake-account $install_dir/stake.json 5 --from $install_dir/identity.json >&3
-    print_color "success" "Stake account created."
+    # Calculate the amount to stake (less than total balance to cover fees)
+    total_balance=$(solana balance $identity_pubkey | awk '{print $1}')
+    stake_amount=$(echo "$total_balance - 0.01" | bc)
 
-    # Delegate stake to the vote account
-    solana delegate-stake $install_dir/stake.json $install_dir/vote.json >&3
-    print_color "success" "Stake delegated to vote account: $vote_pubkey"
+    # Ensure stake amount is positive
+    if (( $(echo "$stake_amount > 0" | bc -l) )); then
+        # Create stake account from identity keypair
+        solana create-stake-account $install_dir/stake.json $stake_amount --from $install_dir/identity.json >&3
+        print_color "success" "Stake account created with $stake_amount SOL."
+        # Delegate stake to the vote account
+        solana delegate-stake $install_dir/stake.json $install_dir/vote.json >&3
+        print_color "success" "Stake account delegated to vote account: $vote_pubkey"
+    else
+        print_color "error" "Insufficient funds to create stake account."
+        exit 1
+    fi
 fi
 
-# Section 9: Start Validator Service with Systemd
-print_color "info" "\n===== 9/10: Starting Validator Service ====="
+# Section 10: Start Validator Service with Systemd
+print_color "info" "\n===== 10/11: Starting Validator Service ====="
 
 # Prompt for unique RPC port
 print_color "prompt" "\nPlease enter a unique RPC port (default is 8899):"
@@ -354,7 +382,7 @@ sudo systemctl enable solana-validator
 sudo systemctl start solana-validator
 print_color "success" "Validator service started and enabled."
 
-# Section 10: Summary and Next Steps
+# Section 11: Summary and Next Steps
 print_color "success" "\n===== Installation and Setup Complete! ====="
 print_color "info" "Validator is running as a systemd service named 'solana-validator'."
 print_color "info" "You can check the status with: sudo systemctl status solana-validator"
