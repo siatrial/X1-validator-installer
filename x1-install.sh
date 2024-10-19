@@ -5,16 +5,16 @@ set -e
 function print_color {
     case $1 in
         "info")
-            echo -e "\033[1;34m$2\033[0m"  # Blue for informational
+            echo -e "\033[1;34m$2\033[0m" >&2  # Blue for informational
             ;;
         "success")
-            echo -e "\033[1;32m$2\033[0m"  # Green for success
+            echo -e "\033[1;32m$2\033[0m" >&2  # Green for success
             ;;
         "error")
-            echo -e "\033[1;31m$2\033[0m"  # Red for errors
+            echo -e "\033[1;31m$2\033[0m" >&2  # Red for errors
             ;;
         "prompt")
-            echo -e "\033[1;33m$2\033[0m"  # Yellow for user prompts
+            echo -e "\033[1;33m$2\033[0m" >&2  # Yellow for user prompts
             ;;
     esac
 }
@@ -158,16 +158,17 @@ function create_wallet {
     local wallet_name=$2
     local pubkey
     if [ ! -f "$wallet_path" ]; then
-        solana-keygen new $passphrase_option --outfile "$wallet_path"
+        # Generate the keypair and suppress output
+        solana-keygen new $passphrase_option --outfile "$wallet_path" >/dev/null 2>&1
         pubkey=$(solana-keygen pubkey "$wallet_path")
         if [ -z "$pubkey" ]; then
-            print_color "error" "Error creating $wallet_name wallet"
+            print_color "error" "Error creating $wallet_name wallet" >&2
             exit 1
         fi
-        print_color "success" "$wallet_name wallet created: $pubkey"
+        print_color "success" "$wallet_name wallet created: $pubkey" >&2
     else
         pubkey=$(solana-keygen pubkey "$wallet_path")
-        print_color "info" "$wallet_name wallet already exists: $pubkey"
+        print_color "info" "$wallet_name wallet already exists: $pubkey" >&2
     fi
     echo "$pubkey"
 }
@@ -202,7 +203,9 @@ max_attempts=5
 cooldown_wait_time=480  # 8 minutes in seconds
 
 while [ "$attempt" -lt "$max_attempts" ]; do
-    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$identity_pubkey\"}" https://xolana.xen.network/faucet)
+    # Escape any special characters in the pubkey
+    escaped_pubkey=$(printf '%s' "$identity_pubkey" | jq -sRr @json)
+    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":$escaped_pubkey}" https://xolana.xen.network/faucet)
     print_color "info" "Faucet response: $response"
 
     # Check if response is valid JSON
@@ -253,7 +256,7 @@ done
 if [ "$attempt" -eq "$max_attempts" ]; then
     print_color "error" "Failed to fund identity wallet after $max_attempts attempts. Exiting."
     exit 1
-fi
+    fi
 
 # Section 8: Create Vote Account
 print_color "info" "\n===== 8/10: Creating Vote Account ====="
