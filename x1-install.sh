@@ -197,6 +197,10 @@ withdrawer_pubkey=$(create_wallet "$HOME/.config/solana/withdrawer.json" "Withdr
 chmod 600 "$install_dir"/*.json
 chmod 600 "$HOME/.config/solana/withdrawer.json"
 
+# Set the default keypair to the identity keypair
+solana config set --keypair "$install_dir/identity.json" > /dev/null 2>&1
+print_color "info" "Default keypair set to identity keypair."
+
 # Display generated keys and pause for user to save them
 print_color "info" "\nPlease save the following keys:\n"
 print_color "info" "Identity Public Key: $identity_pubkey"
