@@ -364,8 +364,6 @@ print_color "info" "Logs are being written to: $install_dir/validator.log"
 
 # Section 11: Testing and Verification
 print_color "info" "\n===== 11/11: Testing and Verification ====="
-
-# Give some time for the validator to start
 print_color "info" "Waiting for the validator to start..."
 sleep 10
 
@@ -389,10 +387,17 @@ solana vote-account $install_dir/vote.json
 # Check validator status
 print_color "info" "\nChecking validator status..."
 validator_info=$(solana validators --output json)
-if echo "$validator_info" | jq -e '.currentValidators[] | select(.identityPubkey == "'"$identity_pubkey"'")' > /dev/null; then
-    print_color "success" "Validator is active in the network."
+
+# Check if validator_info is empty or null
+if [ -z "$validator_info" ] || [ "$validator_info" == "null" ]; then
+    print_color "error" "Failed to retrieve validators list. Please check your network connection and try again."
 else
-    print_color "error" "Validator not found in current validators. It might take a few minutes for the validator to appear."
+    # Proceed with jq parsing, handle cases where currentValidators might be null
+    if echo "$validator_info" | jq -e '.currentValidators[]? | select(.identityPubkey == "'"$identity_pubkey"'")' > /dev/null; then
+        print_color "success" "Validator is active in the network."
+    else
+        print_color "error" "Validator not found in current validators. It might take a few minutes for the validator to appear."
+    fi
 fi
 
 print_color "success" "\nAll tests completed."
