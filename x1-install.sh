@@ -25,15 +25,6 @@ if [[ "$OSTYPE" != "linux-gnu"* ]]; then
     exit 1
 fi
 
-# Check for required commands
-dependencies=(curl wget jq)
-for cmd in "${dependencies[@]}"; do
-    if ! command -v $cmd &> /dev/null; then
-        print_color "error" "Command '$cmd' not found. Please install it before running the script."
-        exit 1
-    fi
-done
-
 # Prompt for verbose output
 print_color "prompt" "Do you want to enable verbose output during installation? [y/n]"
 read verbose
@@ -53,8 +44,41 @@ else
     passphrase_option="--no-passphrase"
 fi
 
-# Section 1: Setup Validator Directory
-print_color "info" "\n===== 1/10: Validator Directory Setup ====="
+# Section 1: Install Dependencies
+print_color "info" "\n===== 1/10: Installing Dependencies ====="
+
+# Function to install packages
+function install_package {
+    local package=$1
+    if command -v $package &> /dev/null; then
+        print_color "success" "$package is already installed."
+    else
+        print_color "info" "Installing $package..."
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update >&3 2>&1
+            sudo apt-get install -y $package >&3 2>&1
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y $package >&3 2>&1
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y $package >&3 2>&1
+        elif command -v pacman &> /dev/null; then
+            sudo pacman -Sy $package >&3 2>&1
+        else
+            print_color "error" "Unsupported package manager. Please install $package manually."
+            exit 1
+        fi
+        print_color "success" "$package installed."
+    fi
+}
+
+# Install required dependencies
+dependencies=(curl wget jq)
+for cmd in "${dependencies[@]}"; do
+    install_package $cmd
+done
+
+# Section 2: Setup Validator Directory
+print_color "info" "\n===== 2/10: Validator Directory Setup ====="
 
 default_install_dir="$HOME/x1_validator"
 print_color "prompt" "Validator Directory (press Enter for default: $default_install_dir):"
@@ -80,8 +104,8 @@ mkdir -p "$install_dir" > /dev/null 2>&1
 cd "$install_dir" || exit 1
 print_color "success" "Directory created: $install_dir"
 
-# Section 2: Install Rust
-print_color "info" "\n===== 2/10: Rust Installation ====="
+# Section 3: Install Rust
+print_color "info" "\n===== 3/10: Rust Installation ====="
 
 if ! command -v rustc &> /dev/null; then
     print_color "info" "Installing Rust..."
@@ -96,8 +120,8 @@ else
     print_color "success" "Rust is already installed: $(rustc --version)"
 fi
 
-# Section 3: Install Solana CLI
-print_color "info" "\n===== 3/10: Solana CLI Installation ====="
+# Section 4: Install Solana CLI
+print_color "info" "\n===== 4/10: Solana CLI Installation ====="
 
 # Define the Solana CLI version
 SOLANA_CLI_VERSION="v1.18.25"
@@ -122,8 +146,8 @@ done
 export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 print_color "success" "Solana CLI installed: $(solana --version)"
 
-# Section 4: Switch to Xolana Network
-print_color "info" "\n===== 4/10: Switch to Xolana Network ====="
+# Section 5: Switch to Xolana Network
+print_color "info" "\n===== 5/10: Switch to Xolana Network ====="
 
 default_network_url="http://xolana.xen.network:8899"
 print_color "prompt" "Enter the network RPC URL (default: $default_network_url):"
@@ -140,8 +164,8 @@ if [ "$network_url_set" != "$network_url" ]; then
 fi
 print_color "success" "Switched to network: $network_url"
 
-# Section 5: Wallets Creation
-print_color "info" "\n===== 5/10: Creating Wallets ====="
+# Section 6: Wallets Creation
+print_color "info" "\n===== 6/10: Creating Wallets ====="
 
 # Function to create a wallet if it doesn't exist
 function create_wallet {
@@ -168,6 +192,10 @@ vote_pubkey=$(create_wallet "$install_dir/vote.json" "Vote")
 stake_pubkey=$(create_wallet "$install_dir/stake.json" "Stake")
 withdrawer_pubkey=$(create_wallet "$HOME/.config/solana/withdrawer.json" "Withdrawer")
 
+# Secure key files
+chmod 600 "$install_dir"/*.json
+chmod 600 "$HOME/.config/solana/withdrawer.json"
+
 # Display generated keys and pause for user to save them
 print_color "info" "\nPlease save the following keys:\n"
 print_color "info" "Identity Public Key: $identity_pubkey"
@@ -177,8 +205,8 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
-# Section 6: Request Faucet Funds - Add retry logic
-print_color "info" "\n===== 6/10: Requesting Faucet Funds ====="
+# Section 7: Request Faucet Funds - Add retry logic
+print_color "info" "\n===== 7/10: Requesting Faucet Funds ====="
 attempt=0
 max_attempts=5
 while [ "$attempt" -lt "$max_attempts" ]; do
@@ -210,8 +238,8 @@ if [ "$attempt" -eq "$max_attempts" ]; then
     exit 1
 fi
 
-# Section 7: Create Vote Account - Validate if account exists and has correct owner
-print_color "info" "\n===== 7/10: Creating Vote Account ====="
+# Section 8: Create Vote Account - Validate if account exists and has correct owner
+print_color "info" "\n===== 8/10: Creating Vote Account ====="
 
 vote_account_exists=$(solana vote-account $vote_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
 if [ "$vote_account_exists" == "true" ]; then
@@ -228,8 +256,8 @@ else
     print_color "success" "Vote account created."
 fi
 
-# Section 8: Start Validator Service with Systemd
-print_color "info" "\n===== 8/10: Starting Validator Service ====="
+# Section 9: Start Validator Service with Systemd
+print_color "info" "\n===== 9/10: Starting Validator Service ====="
 
 # Prompt for unique RPC port
 print_color "prompt" "\nPlease enter a unique RPC port (default is 8899):"
@@ -253,24 +281,22 @@ read additional_options
 # Create a systemd service file
 sudo tee /etc/systemd/system/solana-validator.service > /dev/null <<EOL
 [Unit]
-Description=Solana Validator
+Description=Solana Validator Service
 After=network-online.target
 
 [Service]
 User=$USER
-ExecStart=$(which solana-validator) --identity $install_dir/identity.json \\
+ExecStart=$(which solana-validator) \\
+    --identity $install_dir/identity.json \\
     --vote-account $install_dir/vote.json \\
     --rpc-port $rpc_port \\
     --entrypoint $entrypoint \\
     --full-rpc-api \\
     --log $install_dir/validator.log \\
     --max-genesis-archive-unpacked-size 1073741824 \\
-    --no-incremental-snapshots \\
     --require-tower \\
     --enable-rpc-transaction-history \\
     --enable-extended-tx-metadata-storage \\
-    --skip-startup-ledger-verification \\
-    --no-poh-speed-test \\
     --bind-address 0.0.0.0 \\
     $additional_options
 Restart=always
@@ -286,11 +312,10 @@ sudo systemctl enable solana-validator
 sudo systemctl start solana-validator
 print_color "success" "Validator service started and enabled."
 
-# Section 9: Summary and Next Steps
+# Section 10: Summary and Next Steps
 print_color "success" "\n===== Installation and Setup Complete! ====="
 print_color "info" "Validator is running as a systemd service named 'solana-validator'."
 print_color "info" "You can check the status with: sudo systemctl status solana-validator"
 print_color "info" "Logs are being written to: $install_dir/validator.log"
 print_color "info" "To stop the validator: sudo systemctl stop solana-validator"
 print_color "info" "To view logs: tail -f $install_dir/validator.log"
-
