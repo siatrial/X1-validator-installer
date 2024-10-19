@@ -206,10 +206,12 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
-# Section 7: Requesting Faucet Funds
+# Section 7: Requesting Faucet Funds with User Option
 print_color "info" "\n===== 7/10: Requesting Faucet Funds ====="
 attempt=0
 max_attempts=5
+cooldown_wait_time=480  # 8 minutes in seconds
+
 while [ "$attempt" -lt "$max_attempts" ]; do
     response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$identity_pubkey\"}" https://xolana.xen.network/faucet)
     print_color "info" "Faucet response: $response" >&2
@@ -226,19 +228,35 @@ while [ "$attempt" -lt "$max_attempts" ]; do
 
     if [ "$success" == "true" ]; then
         print_color "success" "5 SOL requested successfully."
+        balance=$(solana balance $identity_pubkey || echo "0 SOL")
+        if [[ "$balance" != *"0 SOL"* ]]; then
+            print_color "success" "Identity funded with $balance."
+            break
+        fi
     elif [[ "$message" == *"Please wait"* ]]; then
-        print_color "error" "Faucet request failed: $message"
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 3 ]; then
+            print_color "prompt" "You've reached $attempt unsuccessful attempts."
+            print_color "prompt" "Do you want to wait for the cooldown and retry automatically? [y/n]"
+            read user_choice
+            if [ "$user_choice" == "y" ]; then
+                print_color "info" "Waiting for the cooldown period of $cooldown_wait_time seconds..."
+                sleep $cooldown_wait_time
+            else
+                print_color "info" "You can manually request funds later using the following command:"
+                echo "curl -X POST -H \"Content-Type: application/json\" -d '{\"pubkey\":\"$identity_pubkey\"}' https://xolana.xen.network/faucet"
+                print_color "error" "Exiting the script as per user request."
+                exit 1
+            fi
+        else
+            print_color "error" "Faucet request failed: $message"
+            print_color "info" "Retrying in 10 seconds... ($attempt/$max_attempts)"
+            sleep 10
+        fi
     else
         print_color "error" "Faucet request failed. Response: $response"
-    fi
-
-    balance=$(solana balance $identity_pubkey || echo "0 SOL")
-    if [[ "$balance" != *"0 SOL"* ]]; then
-        print_color "success" "Identity funded with $balance."
-        break
-    else
-        print_color "error" "Failed to get 5 SOL. Retrying... ($((attempt + 1))/$max_attempts)"
         attempt=$((attempt + 1))
+        print_color "info" "Retrying in 10 seconds... ($attempt/$max_attempts)"
         sleep 10
     fi
 done
@@ -246,7 +264,7 @@ done
 if [ "$attempt" -eq "$max_attempts" ]; then
     print_color "error" "Failed to fund identity wallet after $max_attempts attempts. Exiting."
     exit 1
-    fi
+fi
 
 # Section 8: Create Vote Account - Validate if account exists and has correct owner
 print_color "info" "\n===== 8/10: Creating Vote Account ====="
