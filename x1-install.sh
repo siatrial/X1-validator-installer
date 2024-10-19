@@ -19,25 +19,69 @@ function print_color {
     esac
 }
 
+# Function to install missing dependencies
+install_dependencies() {
+    local packages=("$@")
+    echo "Attempting to install missing dependencies: ${packages[*]}"
+
+    if [[ -f /etc/debian_version ]]; then
+        sudo apt update
+        sudo apt install -y "${packages[@]}"
+    elif [[ -f /etc/redhat-release ]]; then
+        sudo yum install -y epel-release
+        sudo yum install -y "${packages[@]}"
+    elif [[ -f /etc/fedora-release ]]; then
+        sudo dnf install -y "${packages[@]}"
+    elif [[ -f /etc/arch-release ]]; then
+        sudo pacman -Syu --noconfirm "${packages[@]}"
+    elif [[ -f /etc/openSUSE-release ]]; then
+        sudo zypper install -y "${packages[@]}"
+    else
+        print_color "error" "Unsupported Linux distribution. Please install the following dependencies manually: ${packages[*]}"
+        exit 1
+    fi
+}
+
 # Ensure the script is run on Linux
 if [[ "$OSTYPE" != "linux-gnu"* ]]; then
     print_color "error" "This script is designed for Linux systems."
     exit 1
 fi
 
-# Check for required commands
+# Check for required commands and install if missing
 dependencies=(curl wget jq)
+missing_dependencies=()
 for cmd in "${dependencies[@]}"; do
     if ! command -v $cmd &> /dev/null; then
-        print_color "error" "Command '$cmd' not found. Please install it before running the script."
-        exit 1
+        missing_dependencies+=("$cmd")
     fi
 done
+
+if [ ${#missing_dependencies[@]} -ne 0 ]; then
+    print_color "info" "The following dependencies are missing: ${missing_dependencies[*]}"
+    print_color "prompt" "Do you want to install them now? [y/n]"
+    read install_choice
+    if [[ "$install_choice" =~ ^[Yy]$ ]]; then
+        install_dependencies "${missing_dependencies[@]}"
+        # Verify installation
+        for cmd in "${missing_dependencies[@]}"; do
+            if ! command -v $cmd &> /dev/null; then
+                print_color "error" "Failed to install '$cmd'. Please install it manually and rerun the script."
+                exit 1
+            else
+                print_color "success" "Installed '$cmd' successfully."
+            fi
+        done
+    else
+        print_color "error" "Cannot proceed without installing the required dependencies."
+        exit 1
+    fi
+fi
 
 # Prompt for verbose output
 print_color "prompt" "Do you want to enable verbose output during installation? [y/n]"
 read verbose
-if [ "$verbose" == "y" ]; then
+if [[ "$verbose" =~ ^[Yy]$ ]]; then
     exec 3>&1
 else
     exec 3>/dev/null
@@ -46,7 +90,7 @@ fi
 # Prompt for setting passphrase on wallets
 print_color "prompt" "Do you want to secure your wallets with a passphrase? [y/n]"
 read set_passphrase
-if [ "$set_passphrase" == "y" ]; then
+if [[ "$set_passphrase" =~ ^[Yy]$ ]]; then
     passphrase_option=""
     print_color "info" "You will be prompted to enter a passphrase for each wallet."
 else
@@ -65,20 +109,29 @@ if [ -z "$install_dir" ]; then
 fi
 
 if [ -d "$install_dir" ]; then
-    print_color "prompt" "Directory exists. Delete it? [y/n]"
-    read choice
-    if [ "$choice" == "y" ]; then
-        rm -rf "$install_dir" > /dev/null 2>&1
-        print_color "info" "Deleted $install_dir"
+    print_color "prompt" "Directory '$install_dir' already exists. Do you want to use it? [y/n]"
+    read use_existing_dir
+    if [[ "$use_existing_dir" =~ ^[Yy]$ ]]; then
+        print_color "info" "Using existing directory: $install_dir"
     else
-        print_color "error" "Please choose a different directory."
-        exit 1
+        print_color "prompt" "Do you want to delete the existing directory? [y/n]"
+        read delete_choice
+        if [[ "$delete_choice" =~ ^[Yy]$ ]]; then
+            rm -rf "$install_dir" > /dev/null 2>&1
+            print_color "info" "Deleted $install_dir"
+            mkdir -p "$install_dir" > /dev/null 2>&1
+            print_color "success" "Directory created: $install_dir"
+        else
+            print_color "error" "Please choose a different directory or delete the existing one."
+            exit 1
+        fi
     fi
+else
+    mkdir -p "$install_dir" > /dev/null 2>&1
+    print_color "success" "Directory created: $install_dir"
 fi
 
-mkdir -p "$install_dir" > /dev/null 2>&1
 cd "$install_dir" || exit 1
-print_color "success" "Directory created: $install_dir"
 
 # Section 2: Install Rust
 print_color "info" "\n===== 2/10: Rust Installation ====="
@@ -86,7 +139,7 @@ print_color "info" "\n===== 2/10: Rust Installation ====="
 if ! command -v rustc &> /dev/null; then
     print_color "info" "Installing Rust..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y >&3 2>&1
-    . "$HOME/.cargo/env" > /dev/null 2>&1
+    source "$HOME/.cargo/env" > /dev/null 2>&1
     if ! command -v rustc &> /dev/null; then
         print_color "error" "Rust installation failed."
         exit 1
@@ -126,13 +179,13 @@ print_color "success" "Solana CLI installed: $(solana --version)"
 print_color "info" "\n===== 4/10: Switch to Xolana Network ====="
 
 default_network_url="http://xolana.xen.network:8899"
-print_color "prompt" "Enter the network RPC URL (default: $default_network_url):"
+print_color "prompt" "Enter the network RPC URL (press Enter for default: $default_network_url):"
 read network_url
 if [ -z "$network_url" ]; then
     network_url=$default_network_url
 fi
 
-solana config set -u $network_url > /dev/null 2>&1
+solana config set -u "$network_url" > /dev/null 2>&1
 network_url_set=$(solana config get | grep 'RPC URL' | awk '{print $NF}')
 if [ "$network_url_set" != "$network_url" ]; then
     print_color "error" "Failed to switch to network $network_url."
@@ -149,9 +202,9 @@ function handle_wallet {
     local wallet_name=$2
 
     if [ -f "$wallet_path" ]; then
-        print_color "prompt" "$wallet_name wallet already exists at $wallet_path. Do you want to reuse it? [y/n]"
+        print_color "prompt" "$wallet_name wallet already exists at '$wallet_path'. Do you want to reuse it? [y/n]"
         read reuse_choice
-        if [ "$reuse_choice" == "y" ]; then
+        if [[ "$reuse_choice" =~ ^[Yy]$ ]]; then
             local pubkey
             pubkey=$(solana-keygen pubkey "$wallet_path")
             if [ -z "$pubkey" ]; then
@@ -193,7 +246,7 @@ stake_pubkey=$(handle_wallet "$install_dir/stake.json" "Stake")
 withdrawer_pubkey=$(handle_wallet "$HOME/.config/solana/withdrawer.json" "Withdrawer")
 
 # Display generated keys and pause for user to save them
-print_color "info" "\nPlease save the following keys:\n"
+print_color "info" "\nPlease save the following keys securely:\n"
 print_color "info" "Identity Public Key: $identity_pubkey"
 print_color "info" "Vote Public Key: $vote_pubkey"
 print_color "info" "Stake Public Key: $stake_pubkey"
@@ -214,7 +267,7 @@ read -r
 
 # Optionally, verify the balance
 print_color "info" "Checking the balance of the Identity wallet..."
-balance=$(solana balance $identity_pubkey)
+balance=$(solana balance "$identity_pubkey")
 if [[ "$balance" != *"0 SOL"* ]]; then
     print_color "success" "Identity wallet funded with $balance."
 else
@@ -225,9 +278,9 @@ fi
 # Section 7: Create Vote Account - Validate if account exists and has correct owner
 print_color "info" "\n===== 7/10: Creating Vote Account ====="
 
-vote_account_exists=$(solana vote-account $vote_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
+vote_account_exists=$(solana vote-account "$vote_pubkey" > /dev/null 2>&1 && echo "true" || echo "false")
 if [ "$vote_account_exists" == "true" ]; then
-    vote_account_info=$(solana vote-account $vote_pubkey --output json)
+    vote_account_info=$(solana vote-account "$vote_pubkey" --output json)
     vote_account_owner=$(echo "$vote_account_info" | jq -r '.nodePubkey')
     if [ "$vote_account_owner" != "$identity_pubkey" ]; then
         print_color "error" "Vote account owner mismatch. Expected $identity_pubkey but got $vote_account_owner."
@@ -236,7 +289,7 @@ if [ "$vote_account_exists" == "true" ]; then
         print_color "info" "Vote account already exists and is owned by the correct identity."
     fi
 else
-    solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 5 >&3 2>&1
+    solana create-vote-account "$install_dir/vote.json" "$install_dir/identity.json" "$withdrawer_pubkey" --commission 5 >&3 2>&1
     print_color "success" "Vote account created."
 fi
 
@@ -244,15 +297,16 @@ fi
 print_color "info" "\n===== 8/10: Starting Validator Service ====="
 
 # Prompt for unique RPC port
-print_color "prompt" "\nPlease enter a unique RPC port (default is 8899):"
+default_rpc_port=8899
+print_color "prompt" "Please enter a unique RPC port (press Enter for default: $default_rpc_port):"
 read rpc_port
 if [ -z "$rpc_port" ]; then
-    rpc_port=8899
+    rpc_port=$default_rpc_port
 fi
 
 # Prompt for entrypoint
 default_entrypoint="216.202.227.220:8001"
-print_color "prompt" "Enter the entrypoint for the network (default: $default_entrypoint):"
+print_color "prompt" "Enter the entrypoint for the network (press Enter for default: $default_entrypoint):"
 read entrypoint
 if [ -z "$entrypoint" ]; then
     entrypoint=$default_entrypoint
@@ -270,12 +324,12 @@ After=network-online.target
 
 [Service]
 User=$USER
-ExecStart=$(which solana-validator) --identity $install_dir/identity.json \\
-    --vote-account $install_dir/vote.json \\
+ExecStart=$(which solana-validator) --identity "$install_dir/identity.json" \\
+    --vote-account "$install_dir/vote.json" \\
     --rpc-port $rpc_port \\
     --entrypoint $entrypoint \\
     --full-rpc-api \\
-    --log $install_dir/validator.log \\
+    --log "$install_dir/validator.log" \\
     --max-genesis-archive-unpacked-size 1073741824 \\
     --no-incremental-snapshots \\
     --require-tower \\
@@ -305,3 +359,9 @@ print_color "info" "You can check the status with: sudo systemctl status solana-
 print_color "info" "Logs are being written to: $install_dir/validator.log"
 print_color "info" "To stop the validator: sudo systemctl stop solana-validator"
 print_color "info" "To view logs: tail -f $install_dir/validator.log"
+
+# Section 10: Optional - Update and Maintenance Tips
+print_color "info" "\n===== 10/10: Optional - Update and Maintenance ====="
+print_color "info" "To update the Solana CLI in the future, run:"
+print_color "info" "  solana-install update"
+print_color "info" "To update the script or re-run it for maintenance, download the latest version from the repository."
