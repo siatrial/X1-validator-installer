@@ -260,23 +260,27 @@ read -r
 # Section 6: Manual Funding Instruction
 print_color "info" "\n===== 6/10: Funding Identity Wallet ====="
 
-print_color "info" "Instead of automatically requesting funds from the faucet, please manually fund your Identity wallet with 5 SOL."
 print_color "info" "Use the following public key to receive funds:"
 print_color "info" "$identity_pubkey"
-print_color "prompt" "Press Enter once you have funded the Identity wallet."
-read -r
 
-# Correct balance checking section
-balance=$(solana balance "$identity_pubkey" 2>&1)
-if [[ "$balance" == *"error"* ]]; then
-    print_color "error" "Failed to check wallet balance: $balance"
-    exit 1
-elif [[ "$balance" != *"0 SOL"* ]]; then
-    print_color "success" "Identity wallet funded with $balance."
-else
-    print_color "error" "Identity wallet still has 0 SOL. Please ensure you have sent 5 SOL to $identity_pubkey."
-    exit 1
-fi
+print_color "prompt" "Press Enter once you have funded the Identity wallet with at least 5 SOL."
+read -r  # Wait for user input
+
+# Check balance and provide better error handling
+while true; do
+    balance=$(solana balance "$identity_pubkey" 2>&1)
+    if [[ "$balance" == *"error"* ]]; then
+        print_color "error" "Failed to check wallet balance: $balance"
+        exit 1
+    elif [[ "$balance" == "0 SOL" ]]; then
+        print_color "error" "Identity wallet still has 0 SOL. Please ensure you have sent 5 SOL to $identity_pubkey."
+        print_color "prompt" "Press Enter to check again once you've funded the wallet."
+        read -r  # Wait for user to confirm they've funded the wallet
+    else
+        print_color "success" "Identity wallet funded with $balance."
+        break
+    fi
+done
 
 # Section 7: Create Vote Account - Validate if account exists and has correct owner
 print_color "info" "\n===== 7/10: Creating Vote Account ====="
