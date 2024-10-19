@@ -30,10 +30,8 @@ if [[ "$passphrase_choice" == "y" || "$passphrase_choice" == "Y" ]]; then
         exit 1
     fi
     wallet_passphrase_option=""  # Passphrase will be provided via stdin
-    bip39_passphrase_option=""   # No need to specify --no-bip39-passphrase
 else
-    wallet_passphrase_option="--no-passphrase"
-    bip39_passphrase_option="--no-bip39-passphrase"
+    wallet_passphrase_option="--no-passphrase --no-bip39-passphrase"
 fi
 
 # Section 1: Install Dependencies
@@ -99,21 +97,15 @@ stake_keypair_path="$validator_dir/stake-account-keypair.json"
 withdrawer_keypair_path="$validator_dir/withdrawer-keypair.json"
 
 # Identity Keypair
-if [[ "$passphrase_choice" == "y" || "$passphrase_choice" == "Y" ]]; then
-    # User chooses to use a passphrase
-    echo "$wallet_passphrase" | solana-keygen new -o "$identity_keypair_path"
-else
-    # User chooses not to use a passphrase
-    solana-keygen new --no-passphrase --no-bip39-passphrase -o "$identity_keypair_path"
-fi
+solana-keygen new $wallet_passphrase_option -o "$identity_keypair_path"
 
-# Vote Keypair (always without passphrase)
+# Vote Keypair (no passphrase)
 solana-keygen new --no-passphrase --no-bip39-passphrase -o "$vote_keypair_path"
 
-# Stake Keypair (always without passphrase)
+# Stake Keypair (no passphrase)
 solana-keygen new --no-passphrase --no-bip39-passphrase -o "$stake_keypair_path"
 
-# Withdrawer Keypair (if not exists)
+# Withdrawer Keypair (no passphrase, created only if not exists)
 if [ ! -f "$withdrawer_keypair_path" ]; then
     solana-keygen new --no-passphrase --no-bip39-passphrase -o "$withdrawer_keypair_path"
 fi
@@ -197,25 +189,4 @@ ExecStart=$(which solana-validator) \\
     --limit-ledger-size \\
     --log /var/log/solana/solana-validator.log \\
     --ledger "$validator_dir/ledger"
-Restart=always
-RestartSec=3
-LimitNOFILE=500000
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-print_color "success" "Systemd service file created at /etc/systemd/system/solana-validator.service"
-
-# Section 11: Start the Validator
-print_color "info" "\n===== 11/11: Starting the Validator ====="
-sudo systemctl daemon-reload
-sudo systemctl enable solana-validator
-sudo systemctl start solana-validator
-print_color "success" "Solana validator service started."
-
-print_color "info" "\n===== Setup Complete ====="
-print_color "info" "You can check the status of your validator with:"
-print_color "info" "  sudo systemctl status solana-validator"
-print_color "info" "You can view logs with:"
-print_color "info" "  sudo journalctl -u solana-validator -f"
+Restart=
