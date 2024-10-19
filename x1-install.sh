@@ -270,22 +270,26 @@ if [ "$attempt" -eq "$max_attempts" ]; then
     exit 1
 fi
 
-# Section 8: Create Vote Account - Validate if account exists and has correct owner
-print_color "info" "\n===== 8/10: Creating Vote Account ====="
+# Section 8: Create Stake Account
+print_color "info" "\n===== 8/10: Creating Stake Account ====="
 
-vote_account_exists=$(solana vote-account $vote_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
-if [ "$vote_account_exists" == "true" ]; then
-    vote_account_info=$(solana vote-account $vote_pubkey --output json)
-    vote_account_owner=$(echo "$vote_account_info" | jq -r '.nodePubkey')
-    if [ "$vote_account_owner" != "$identity_pubkey" ]; then
-        print_color "error" "Vote account owner mismatch. Expected $identity_pubkey but got $vote_account_owner."
+stake_account_exists=$(solana stake-account $stake_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
+if [ "$stake_account_exists" == "true" ]; then
+    stake_account_info=$(solana stake-account $stake_pubkey --output json)
+    stake_account_owner=$(echo "$stake_account_info" | jq -r '.owner')
+    if [ "$stake_account_owner" != "Stake11111111111111111111111111111111111111" ]; then
+        print_color "error" "Stake account ownership mismatch. Expected Stake11111111111111111111111111111111111111 but got $stake_account_owner."
         exit 1
     else
-        print_color "info" "Vote account already exists and is owned by the correct identity."
+        print_color "info" "Stake account already exists and is owned by the correct program."
     fi
 else
-    solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 5 >&3
-    print_color "success" "Vote account created."
+    solana create-stake-account $install_dir/stake.json 5 --from $install_dir/identity.json >&3
+    print_color "success" "Stake account created."
+
+    # Delegate stake to the vote account
+    solana delegate-stake $install_dir/stake.json $install_dir/vote.json >&3
+    print_color "success" "Stake delegated to vote account: $vote_pubkey"
 fi
 
 # Section 9: Start Validator Service with Systemd
