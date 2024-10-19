@@ -29,10 +29,9 @@ if [[ "$passphrase_choice" == "y" || "$passphrase_choice" == "Y" ]]; then
         print_color "error" "Passphrases do not match. Exiting."
         exit 1
     fi
-    wallet_passphrase_option=""
-    bip39_passphrase_option=""
+    wallet_passphrase_option=""  # Passphrase will be provided via stdin
+    bip39_passphrase_option=""   # No need to specify --no-bip39-passphrase
 else
-    wallet_passphrase=""
     wallet_passphrase_option="--no-passphrase"
     bip39_passphrase_option="--no-bip39-passphrase"
 fi
@@ -110,10 +109,10 @@ else
     solana-keygen new $wallet_passphrase_option $bip39_passphrase_option -o "$identity_keypair_path"
 fi
 
-# Create Vote Keypair
+# Create Vote Keypair (always without passphrase)
 solana-keygen new --no-passphrase --no-bip39-passphrase -o "$vote_keypair_path"
 
-# Create Stake Keypair
+# Create Stake Keypair (always without passphrase)
 solana-keygen new --no-passphrase --no-bip39-passphrase -o "$stake_keypair_path"
 
 # Create Withdrawer Keypair (if not exists)
@@ -138,6 +137,7 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -p ""
 
+# Section 7: Requesting Faucet Funds
 print_color "info" "\n===== 7/11: Requesting Faucet Funds ====="
 
 # Attempt to request funds from the faucet
