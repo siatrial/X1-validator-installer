@@ -36,7 +36,7 @@ else
 fi
 
 # Section 1: Install Dependencies
-print_color "info" "\n===== 1/11: Installing Dependencies ====="
+print_color "info" "\n===== 1/10: Installing Dependencies ====="
 
 # Function to install packages
 function install_package {
@@ -63,13 +63,13 @@ function install_package {
 }
 
 # Install required dependencies
-dependencies=(curl wget jq bc screen)
+dependencies=(curl wget jq bc)
 for cmd in "${dependencies[@]}"; do
     install_package $cmd
 done
 
 # Section 2: Setup Validator Directory
-print_color "info" "\n===== 2/11: Validator Directory Setup ====="
+print_color "info" "\n===== 2/10: Validator Directory Setup ====="
 
 default_install_dir="$HOME/x1_validator"
 print_color "prompt" "Validator Directory (press Enter for default: $default_install_dir):"
@@ -96,7 +96,7 @@ cd "$install_dir" || exit 1
 print_color "success" "Directory created: $install_dir"
 
 # Section 3: Install Rust
-print_color "info" "\n===== 3/11: Rust Installation ====="
+print_color "info" "\n===== 3/10: Rust Installation ====="
 
 if ! command -v rustc &> /dev/null; then
     print_color "info" "Installing Rust..."
@@ -112,7 +112,7 @@ else
 fi
 
 # Section 4: Install Solana CLI
-print_color "info" "\n===== 4/11: Solana CLI Installation ====="
+print_color "info" "\n===== 4/10: Solana CLI Installation ====="
 
 # Define the Solana CLI version
 SOLANA_CLI_VERSION="v1.18.25"
@@ -132,7 +132,7 @@ fi
 print_color "success" "Solana CLI installed: $(solana --version)"
 
 # Section 5: Switch to Xolana Network
-print_color "info" "\n===== 5/11: Switch to Xolana Network ====="
+print_color "info" "\n===== 5/10: Switch to Xolana Network ====="
 
 default_network_url="http://xolana.xen.network:8899"
 print_color "prompt" "Enter the network RPC URL (default: $default_network_url):"
@@ -150,7 +150,7 @@ fi
 print_color "success" "Switched to network: $network_url"
 
 # Section 6: Wallets Creation
-print_color "info" "\n===== 6/11: Creating Wallets ====="
+print_color "info" "\n===== 6/10: Creating Wallets ====="
 
 # Function to create a wallet if it doesn't exist
 function create_wallet {
@@ -196,123 +196,8 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
-# Section 7: Requesting Faucet Funds
-print_color "info" "\n===== 7/11: Requesting Faucet Funds ====="
-attempt=0
-max_attempts=5
-cooldown_wait_time=480  # 8 minutes in seconds
-
-while [ "$attempt" -lt "$max_attempts" ]; do
-    # Escape any special characters in the pubkey
-    escaped_pubkey=$(printf '%s' "$identity_pubkey" | jq -sRr @json)
-    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":$escaped_pubkey}" https://xolana.xen.network/faucet)
-    print_color "info" "Faucet response: $response"
-
-    # Check if response is valid JSON
-    if echo "$response" | jq empty >/dev/null 2>&1; then
-        success=$(echo "$response" | jq -r '.success')
-        message=$(echo "$response" | jq -r '.message')
-    else
-        print_color "error" "Invalid JSON response from faucet: $response"
-        success="false"
-        message="Invalid JSON response"
-    fi
-
-    if [ "$success" == "true" ]; then
-        print_color "success" "5 SOL requested successfully."
-        balance=$(solana balance $identity_pubkey || echo "0 SOL")
-        if [[ "$balance" != *"0 SOL"* ]]; then
-            print_color "success" "Identity funded with $balance."
-            break
-        fi
-    elif [[ "$message" == *"Please wait"* ]]; then
-        attempt=$((attempt + 1))
-        if [ "$attempt" -ge 3 ]; then
-            print_color "prompt" "You've reached $attempt unsuccessful attempts."
-            print_color "prompt" "Do you want to wait for the cooldown and retry automatically? [y/n]"
-            read user_choice
-            if [ "$user_choice" == "y" ]; then
-                print_color "info" "Waiting for the cooldown period of $cooldown_wait_time seconds..."
-                sleep $cooldown_wait_time
-            else
-                print_color "info" "You can manually request funds later using the following command:"
-                echo "curl -X POST -H \"Content-Type: application/json\" -d '{\"pubkey\":\"$identity_pubkey\"}' https://xolana.xen.network/faucet"
-                print_color "error" "Exiting the script as per user request."
-                exit 1
-            fi
-        else
-            print_color "error" "Faucet request failed: $message"
-            print_color "info" "Retrying in 10 seconds... ($attempt/$max_attempts)"
-            sleep 10
-        fi
-    else
-        print_color "error" "Faucet request failed. Response: $response"
-        attempt=$((attempt + 1))
-        print_color "info" "Retrying in 10 seconds... ($attempt/$max_attempts)"
-        sleep 10
-    fi
-done
-
-if [ "$attempt" -eq "$max_attempts" ]; then
-    print_color "error" "Failed to fund identity wallet after $max_attempts attempts. Exiting."
-    exit 1
-fi
-
-# Section 8: Create Vote Account
-print_color "info" "\n===== 8/11: Creating Vote Account ====="
-
-vote_account_exists=$(solana vote-account $vote_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
-if [ "$vote_account_exists" == "true" ]; then
-    vote_account_info=$(solana vote-account $vote_pubkey --output json)
-    vote_account_owner=$(echo "$vote_account_info" | jq -r '.nodePubkey')
-    if [ "$vote_account_owner" != "$identity_pubkey" ]; then
-        print_color "error" "Vote account owner mismatch. Expected $identity_pubkey but got $vote_account_owner."
-        exit 1
-    else
-        print_color "info" "Vote account already exists and is owned by the correct identity."
-    fi
-else
-    create_vote_output=$(solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 5)
-    print_color "info" "$create_vote_output"
-    print_color "success" "Vote account created."
-fi
-
-# Section 9: Create Stake Account
-print_color "info" "\n===== 9/11: Creating Stake Account ====="
-
-stake_account_exists=$(solana stake-account $stake_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
-if [ "$stake_account_exists" == "true" ]; then
-    stake_account_info=$(solana stake-account $stake_pubkey --output json)
-    stake_account_owner=$(echo "$stake_account_info" | jq -r '.owner')
-    if [ "$stake_account_owner" != "Stake11111111111111111111111111111111111111" ]; then
-        print_color "error" "Stake account ownership mismatch. Expected Stake11111111111111111111111111111111111111 but got $stake_account_owner."
-        exit 1
-    else
-        print_color "info" "Stake account already exists and is owned by the correct program."
-    fi
-else
-    # Calculate the amount to stake (less than total balance to cover fees)
-    total_balance=$(solana balance $identity_pubkey | awk '{print $1}')
-    stake_amount=$(echo "$total_balance - 0.01" | bc)
-
-    # Ensure stake amount is positive
-    if (( $(echo "$stake_amount > 0" | bc -l) )); then
-        # Create stake account from identity keypair
-        create_stake_output=$(solana create-stake-account $install_dir/stake.json $stake_amount --from $install_dir/identity.json)
-        print_color "info" "$create_stake_output"
-        print_color "success" "Stake account created with $stake_amount SOL."
-        # Delegate stake to the vote account
-        delegate_stake_output=$(solana delegate-stake $install_dir/stake.json $install_dir/vote.json)
-        print_color "info" "$delegate_stake_output"
-        print_color "success" "Stake account delegated to vote account: $vote_pubkey"
-    else
-        print_color "error" "Insufficient funds to create stake account."
-        exit 1
-    fi
-fi
-
-# Section 10: Start Validator Without Systemd
-print_color "info" "\n===== 10/11: Starting Validator ====="
+# Section 7: Create Systemd Service for Validator
+print_color "info" "\n===== 7/10: Creating Systemd Service for Solana Validator ====="
 
 # Prompt for unique RPC port
 print_color "prompt" "\nPlease enter a unique RPC port (default is 8899):"
@@ -329,41 +214,52 @@ if [ -z "$entrypoint" ]; then
     entrypoint=$default_entrypoint
 fi
 
-# Prompt for additional validator options
-print_color "prompt" "Enter any additional solana-validator options (or press Enter to skip):"
-read additional_options
-
 # Create ledger directory
 ledger_dir="$install_dir/ledger"
 mkdir -p "$ledger_dir"
 
-# Build the solana-validator command
-validator_cmd="$(which solana-validator) \
-    --identity $install_dir/identity.json \
-    --vote-account $install_dir/vote.json \
-    --ledger $ledger_dir \
-    --rpc-port $rpc_port \
-    --entrypoint $entrypoint \
-    --full-rpc-api \
-    --log $install_dir/validator.log \
-    --max-genesis-archive-unpacked-size 1073741824 \
-    --require-tower \
-    --enable-rpc-transaction-history \
-    --enable-extended-tx-metadata-storage \
-    --bind-address 0.0.0.0 \
-    $additional_options"
+# Create the systemd service file
+service_file="/etc/systemd/system/solana-validator.service"
+sudo bash -c "cat > $service_file" <<EOL
+[Unit]
+Description=Solana Validator Node
+After=network.target
 
-# Run the validator in a detached screen session
-print_color "info" "Starting the validator in a detached screen session named 'solana-validator'..."
-screen -dmS solana-validator bash -c "$validator_cmd"
+[Service]
+User=$USER
+ExecStart=$(which solana-validator) \\
+    --identity $install_dir/identity.json \\
+    --vote-account $install_dir/vote.json \\
+    --ledger $ledger_dir \\
+    --rpc-port $rpc_port \\
+    --entrypoint $entrypoint \\
+    --full-rpc-api \\
+    --log $install_dir/validator.log \\
+    --max-genesis-archive-unpacked-size 1073741824 \\
+    --require-tower \\
+    --enable-rpc-transaction-history \\
+    --enable-extended-tx-metadata-storage \\
+    --bind-address 0.0.0.0
 
-print_color "success" "Validator started in a detached screen session."
-print_color "info" "You can attach to the session using: screen -r solana-validator"
-print_color "info" "To detach from the session, press: Ctrl+A then D"
-print_color "info" "Logs are being written to: $install_dir/validator.log"
+Restart=always
+RestartSec=3
 
-# Section 11: Testing and Verification
-print_color "info" "\n===== 11/11: Testing and Verification ====="
+[Install]
+WantedBy=multi-user.target
+EOL
+
+print_color "success" "Systemd service created at $service_file"
+
+# Reload systemd daemon and enable the service
+sudo systemctl daemon-reload
+sudo systemctl enable solana-validator.service
+
+# Start the validator service
+sudo systemctl start solana-validator.service
+print_color "success" "Validator service started."
+
+# Section 8: Testing and Verification
+print_color "info" "\n===== 8/10: Testing and Verification ====="
 print_color "info" "Waiting for the validator to start..."
 sleep 10
 
