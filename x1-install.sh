@@ -30,8 +30,11 @@ if [[ "$passphrase_choice" == "y" || "$passphrase_choice" == "Y" ]]; then
         exit 1
     fi
     wallet_passphrase_option=""
+    bip39_passphrase_option=""
 else
+    wallet_passphrase=""
     wallet_passphrase_option="--no-passphrase"
+    bip39_passphrase_option="--no-bip39-passphrase"
 fi
 
 # Section 1: Install Dependencies
@@ -99,7 +102,13 @@ stake_keypair_path="$validator_dir/stake-account-keypair.json"
 withdrawer_keypair_path="$validator_dir/withdrawer-keypair.json"
 
 # Create Identity Keypair
-solana-keygen new $wallet_passphrase_option --no-bip39-passphrase -o "$identity_keypair_path" <<< "$wallet_passphrase"
+if [[ "$passphrase_choice" == "y" || "$passphrase_choice" == "Y" ]]; then
+    # User chooses to use a passphrase
+    echo "$wallet_passphrase" | solana-keygen new $wallet_passphrase_option $bip39_passphrase_option -o "$identity_keypair_path"
+else
+    # User chooses not to use a passphrase
+    solana-keygen new $wallet_passphrase_option $bip39_passphrase_option -o "$identity_keypair_path"
+fi
 
 # Create Vote Keypair
 solana-keygen new --no-passphrase --no-bip39-passphrase -o "$vote_keypair_path"
@@ -129,7 +138,6 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -p ""
 
-# Section 7: Requesting Faucet Funds
 print_color "info" "\n===== 7/11: Requesting Faucet Funds ====="
 
 # Attempt to request funds from the faucet
