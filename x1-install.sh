@@ -141,32 +141,56 @@ fi
 print_color "success" "Switched to network: $network_url"
 
 # Section 5: Wallets Creation
-print_color "info" "\n===== 5/10: Creating Wallets ====="
+print_color "info" "\n===== 5/10: Creating or Reusing Wallets ====="
 
-# Function to create a wallet if it doesn't exist
-function create_wallet {
+# Function to create a wallet if it doesn't exist or if the user chooses to create a new one
+function handle_wallet {
     local wallet_path=$1
     local wallet_name=$2
-    if [ ! -f "$wallet_path" ]; then
+
+    if [ -f "$wallet_path" ]; then
+        print_color "prompt" "$wallet_name wallet already exists at $wallet_path. Do you want to reuse it? [y/n]"
+        read reuse_choice
+        if [ "$reuse_choice" == "y" ]; then
+            local pubkey
+            pubkey=$(solana-keygen pubkey "$wallet_path")
+            if [ -z "$pubkey" ]; then
+                print_color "error" "Failed to retrieve public key from existing $wallet_name wallet."
+                exit 1
+            fi
+            print_color "info" "Reusing existing $wallet_name wallet: $pubkey"
+            echo "$pubkey"
+        else
+            # Create a new wallet
+            solana-keygen new $passphrase_option --outfile "$wallet_path" > /dev/null 2>&1
+            local new_pubkey
+            new_pubkey=$(solana-keygen pubkey "$wallet_path")
+            if [ -z "$new_pubkey" ]; then
+                print_color "error" "Error creating new $wallet_name wallet."
+                exit 1
+            fi
+            print_color "success" "New $wallet_name wallet created: $new_pubkey"
+            echo "$new_pubkey"
+        fi
+    else
+        # Create a new wallet
         solana-keygen new $passphrase_option --outfile "$wallet_path" > /dev/null 2>&1
-        local pubkey=$(solana-keygen pubkey "$wallet_path")
-        if [ -z "$pubkey" ]; then
-            print_color "error" "Error creating $wallet_name wallet"
+        local new_pubkey
+        new_pubkey=$(solana-keygen pubkey "$wallet_path")
+        if [ -z "$new_pubkey" ]; then
+            print_color "error" "Error creating $wallet_name wallet."
             exit 1
         fi
-        print_color "success" "$wallet_name wallet created: $pubkey"
-    else
-        local pubkey=$(solana-keygen pubkey "$wallet_path")
-        print_color "info" "$wallet_name wallet already exists: $pubkey"
+        print_color "success" "$wallet_name wallet created: $new_pubkey"
+        echo "$new_pubkey"
     fi
-    echo "$pubkey"
 }
 
-# Create wallets
-identity_pubkey=$(create_wallet "$install_dir/identity.json" "Identity")
-vote_pubkey=$(create_wallet "$install_dir/vote.json" "Vote")
-stake_pubkey=$(create_wallet "$install_dir/stake.json" "Stake")
-withdrawer_pubkey=$(create_wallet "$HOME/.config/solana/withdrawer.json" "Withdrawer")
+# Create or reuse wallets
+identity_pubkey=$(handle_wallet "$install_dir/identity.json" "Identity")
+vote_pubkey=$(handle_wallet "$install_dir/vote.json" "Vote")
+stake_pubkey=$(handle_wallet "$install_dir/stake.json" "Stake")
+withdrawer_pubkey=$(handle_wallet "$HOME/.config/solana/withdrawer.json" "Withdrawer")
 
 # Display generated keys and pause for user to save them
 print_color "info" "\nPlease save the following keys:\n"
@@ -177,36 +201,24 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
-# Section 6: Request Faucet Funds - Add retry logic
-print_color "info" "\n===== 6/10: Requesting Faucet Funds ====="
-attempt=0
-max_attempts=5
-while [ "$attempt" -lt "$max_attempts" ]; do
-    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$identity_pubkey\"}" https://xolana.xen.network/faucet)
-    success=$(echo "$response" | jq -r '.success')
-    message=$(echo "$response" | jq -r '.message')
+# Section 6: Manual Funding Instruction
+print_color "info" "\n===== 6/10: Funding Identity Wallet ====="
 
-    if [ "$success" == "true" ]; then
-        print_color "success" "5 SOL requested successfully."
-    elif [[ "$message" == *"Please wait"* ]]; then
-        print_color "error" "Faucet request failed: $message"
-    else
-        print_color "error" "Faucet request failed. Response: $response"
-    fi
+print_color "info" "Instead of automatically requesting funds from the faucet, please manually fund your Identity wallet with 5 SOL."
+print_color "info" "Use the following public key to receive funds:"
+print_color "info" "$identity_pubkey"
+print_color "info" "\nYou can use any Solana-compatible wallet or exchange to send 5 SOL to this address."
 
-    balance=$(solana balance $identity_pubkey)
-    if [[ "$balance" != *"0 SOL"* ]]; then
-        print_color "success" "Identity funded with $balance."
-        break
-    else
-        print_color "error" "Failed to get 5 SOL. Retrying... ($((attempt + 1))/$max_attempts)"
-        attempt=$((attempt + 1))
-        sleep 10
-    fi
-done
+print_color "prompt" "Press Enter once you have funded the Identity wallet."
+read -r
 
-if [ "$attempt" -eq "$max_attempts" ]; then
-    print_color "error" "Failed to fund identity wallet after $max_attempts attempts. Exiting."
+# Optionally, verify the balance
+print_color "info" "Checking the balance of the Identity wallet..."
+balance=$(solana balance $identity_pubkey)
+if [[ "$balance" != *"0 SOL"* ]]; then
+    print_color "success" "Identity wallet funded with $balance."
+else
+    print_color "error" "Identity wallet still has 0 SOL. Please ensure you have sent 5 SOL to $identity_pubkey."
     exit 1
 fi
 
@@ -293,4 +305,3 @@ print_color "info" "You can check the status with: sudo systemctl status solana-
 print_color "info" "Logs are being written to: $install_dir/validator.log"
 print_color "info" "To stop the validator: sudo systemctl stop solana-validator"
 print_color "info" "To view logs: tail -f $install_dir/validator.log"
-
