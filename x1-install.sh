@@ -137,7 +137,7 @@ print_color "info" "\n===== 3/10: Solana CLI Installation ====="
 SOLANA_CLI_VERSION="v1.18.25"
 
 print_color "info" "Installing Solana CLI version $SOLANA_CLI_VERSION..."
-sh -c "$(curl -sSfL https://release.solana.com/$SOLANA_CLI_VERSION/install)" >&3 2>&1
+sh -c "$(curl -sSfL https://release.solana.com/$SOLANA_CLI_VERSION/install)"  # Remove the >&3 redirection
 
 # Update PATH immediately after installation
 export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
