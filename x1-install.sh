@@ -10,11 +10,14 @@ function print_color {
         "success")
             echo -e "\033[1;32m$2\033[0m"  # Green for success
             ;;
+        "warn")
+            echo -e "\033[1;33m$2\033[0m"  # Yellow for warnings
+            ;;
         "error")
             echo -e "\033[1;31m$2\033[0m"  # Red for errors
             ;;
         "prompt")
-            echo -e "\033[1;33m$2\033[0m"  # Yellow for user prompts
+            echo -e "\033[1;36m$2\033[0m"  # Cyan for user prompts
             ;;
     esac
 }
@@ -25,14 +28,8 @@ if [[ "$OSTYPE" != "linux-gnu"* ]]; then
     exit 1
 fi
 
-# Prompt for verbose output
-print_color "prompt" "Do you want to enable verbose output during installation? [y/n]"
-read verbose
-if [ "$verbose" == "y" ]; then
-    exec 3>&1
-else
-    exec 3>/dev/null
-fi
+# Remove verbose output prompt and set exec 3>&1 for logging
+exec 3>&1
 
 # Prompt for setting passphrase on wallets
 print_color "prompt" "Do you want to secure your wallets with a passphrase? [y/n]"
@@ -45,7 +42,7 @@ else
 fi
 
 # Section 1: Install Dependencies
-print_color "info" "\n===== 1/11: Installing Dependencies ====="
+print_color "info" "\n===== 1/10: Installing Dependencies ====="
 
 # Function to install packages
 function install_package {
@@ -78,7 +75,7 @@ for cmd in "${dependencies[@]}"; do
 done
 
 # Section 2: Setup Validator Directory
-print_color "info" "\n===== 2/11: Validator Directory Setup ====="
+print_color "info" "\n===== 2/10: Validator Directory Setup ====="
 
 default_install_dir="$HOME/x1_validator"
 print_color "prompt" "Validator Directory (press Enter for default: $default_install_dir):"
@@ -105,7 +102,7 @@ cd "$install_dir" || exit 1
 print_color "success" "Directory created: $install_dir"
 
 # Section 3: Install Rust
-print_color "info" "\n===== 3/11: Rust Installation ====="
+print_color "info" "\n===== 3/10: Rust Installation ====="
 
 if ! command -v rustc &> /dev/null; then
     print_color "info" "Installing Rust..."
@@ -121,7 +118,7 @@ else
 fi
 
 # Section 4: Install Solana CLI
-print_color "info" "\n===== 4/11: Solana CLI Installation ====="
+print_color "info" "\n===== 4/10: Solana CLI Installation ====="
 
 # Define the Solana CLI version
 SOLANA_CLI_VERSION="v1.18.25"
@@ -141,7 +138,7 @@ fi
 print_color "success" "Solana CLI installed: $(solana --version)"
 
 # Section 5: Switch to Xolana Network
-print_color "info" "\n===== 5/11: Switch to Xolana Network ====="
+print_color "info" "\n===== 5/10: Switch to Xolana Network ====="
 
 default_network_url="http://xolana.xen.network:8899"
 print_color "prompt" "Enter the network RPC URL (default: $default_network_url):"
@@ -159,7 +156,7 @@ fi
 print_color "success" "Switched to network: $network_url"
 
 # Section 6: Wallets Creation
-print_color "info" "\n===== 6/11: Creating Wallets ====="
+print_color "info" "\n===== 6/10: Creating Wallets ====="
 
 # Function to create a wallet if it doesn't exist
 function create_wallet {
@@ -167,7 +164,7 @@ function create_wallet {
     local wallet_name=$2
     local pubkey
     if [ ! -f "$wallet_path" ]; then
-        solana-keygen new $passphrase_option --outfile "$wallet_path" >&3 2>&1
+        solana-keygen new $passphrase_option --outfile "$wallet_path" >&3
         pubkey=$(solana-keygen pubkey "$wallet_path")
         if [ -z "$pubkey" ]; then
             print_color "error" "Error creating $wallet_name wallet" >&2
@@ -205,7 +202,7 @@ print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
 # Section 7: Requesting Faucet Funds with User Option
-print_color "info" "\n===== 7/11: Requesting Faucet Funds ====="
+print_color "info" "\n===== 7/10: Requesting Faucet Funds ====="
 attempt=0
 max_attempts=5
 cooldown_wait_time=480  # 8 minutes in seconds
@@ -265,7 +262,7 @@ if [ "$attempt" -eq "$max_attempts" ]; then
 fi
 
 # Section 8: Create Vote Account
-print_color "info" "\n===== 8/11: Creating Vote Account ====="
+print_color "info" "\n===== 8/10: Creating Vote Account ====="
 
 vote_account_exists=$(solana vote-account $vote_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
 if [ "$vote_account_exists" == "true" ]; then
@@ -283,7 +280,7 @@ else
 fi
 
 # Section 9: Create Stake Account
-print_color "info" "\n===== 9/11: Creating Stake Account ====="
+print_color "info" "\n===== 9/10: Creating Stake Account ====="
 
 stake_account_exists=$(solana stake-account $stake_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
 if [ "$stake_account_exists" == "true" ]; then
@@ -314,8 +311,9 @@ else
     fi
 fi
 
-# Section 10: Start Validator Service with Systemd
-print_color "info" "\n===== 10/11: Starting Validator Service ====="
+# Section 10: Starting Validator
+
+print_color "info" "\n===== 10/10: Starting Validator ====="
 
 # Prompt for unique RPC port
 print_color "prompt" "\nPlease enter a unique RPC port (default is 8899):"
@@ -340,8 +338,10 @@ read additional_options
 ledger_dir="$install_dir/ledger"
 mkdir -p "$ledger_dir"
 
-# Create a systemd service file
-sudo tee /etc/systemd/system/solana-validator.service > /dev/null <<EOL
+# Check if systemd is available
+if command -v systemctl >/dev/null 2>&1; then
+    # Create a systemd service file
+    sudo tee /etc/systemd/system/solana-validator.service > /dev/null <<EOL
 [Unit]
 Description=Solana Validator Service
 After=network-online.target
@@ -370,16 +370,51 @@ LimitNOFILE=1000000
 WantedBy=multi-user.target
 EOL
 
-# Reload systemd and start the service
-sudo systemctl daemon-reload
-sudo systemctl enable solana-validator
-sudo systemctl start solana-validator
-print_color "success" "Validator service started and enabled."
+    # Reload systemd and start the service
+    sudo systemctl daemon-reload
+    sudo systemctl enable solana-validator
+    sudo systemctl start solana-validator
+    print_color "success" "Validator service started and enabled."
 
-# Section 11: Summary and Next Steps
-print_color "success" "\n===== Installation and Setup Complete! ====="
-print_color "info" "Validator is running as a systemd service named 'solana-validator'."
-print_color "info" "You can check the status with: sudo systemctl status solana-validator"
-print_color "info" "Logs are being written to: $install_dir/validator.log"
-print_color "info" "To stop the validator: sudo systemctl stop solana-validator"
-print_color "info" "To view logs: tail -f $install_dir/validator.log"
+    # Summary and Next Steps
+    print_color "success" "\n===== Installation and Setup Complete! ====="
+    print_color "info" "Validator is running as a systemd service named 'solana-validator'."
+    print_color "info" "You can check the status with: sudo systemctl status solana-validator"
+    print_color "info" "Logs are being written to: $install_dir/validator.log"
+    print_color "info" "To stop the validator: sudo systemctl stop solana-validator"
+    print_color "info" "To view logs: tail -f $install_dir/validator.log"
+
+else
+    print_color "warn" "Systemd is not available on this system. Starting validator manually."
+
+    # Create a startup script
+    cat <<EOL > $install_dir/start_validator.sh
+#!/bin/bash
+$(which solana-validator) \\
+    --identity $install_dir/identity.json \\
+    --vote-account $install_dir/vote.json \\
+    --ledger $ledger_dir \\
+    --rpc-port $rpc_port \\
+    --entrypoint $entrypoint \\
+    --full-rpc-api \\
+    --log $install_dir/validator.log \\
+    --max-genesis-archive-unpacked-size 1073741824 \\
+    --require-tower \\
+    --enable-rpc-transaction-history \\
+    --enable-extended-tx-metadata-storage \\
+    --bind-address 0.0.0.0 \\
+    $additional_options
+EOL
+    chmod +x $install_dir/start_validator.sh
+
+    print_color "info" "\nYou can start the validator by running:"
+    print_color "info" "  $install_dir/start_validator.sh"
+    print_color "info" "Consider using 'screen' or 'tmux' to run the validator in the background."
+
+    # Summary and Next Steps
+    print_color "success" "\n===== Installation and Setup Complete! ====="
+    print_color "info" "Validator startup script is located at: $install_dir/start_validator.sh"
+    print_color "info" "Logs will be written to: $install_dir/validator.log"
+    print_color "info" "To start the validator: $install_dir/start_validator.sh"
+    print_color "info" "To view logs: tail -f $install_dir/validator.log"
+fi
