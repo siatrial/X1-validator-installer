@@ -1,192 +1,199 @@
 #!/bin/bash
 
-# x1-install.sh
-# A script to set up a Solana validator on the Xolana network
-
-# Color functions for output
-print_color() {
+# Function to print color-coded messages
+function print_color {
     case $1 in
-        "info") color="96m";;       # Light Cyan
-        "success") color="92m";;    # Light Green
-        "error") color="91m";;      # Light Red
-        "warning") color="93m";;    # Light Yellow
-        "prompt") color="95m";;     # Light Magenta
-        *) color="0m";;             # Default color
+        "info")
+            echo -e "\033[1;34m$2\033[0m"  # Blue for informational
+            ;;
+        "success")
+            echo -e "\033[1;32m$2\033[0m"  # Green for success
+            ;;
+        "error")
+            echo -e "\033[1;31m$2\033[0m"  # Red for errors
+            ;;
+        "prompt")
+            echo -e "\033[1;33m$2\033[0m"  # Yellow for user prompts
+            ;;
     esac
-    echo -e "\e[${color}$2\e[0m"
 }
 
-# Section 0: Introduction and Passphrase
-echo "Do you want to secure your wallets with a passphrase? [y/n]"
-read -p "" passphrase_choice
+# Section 1: Setup Validator Directory
+print_color "info" "\n"
+print_color "info" "\n===== 1/10: Validator Directory Setup ====="
 
-if [[ "$passphrase_choice" == "y" || "$passphrase_choice" == "Y" ]]; then
-    read -s -p "Enter passphrase: " wallet_passphrase
-    echo
-    read -s -p "Confirm passphrase: " wallet_passphrase_confirm
-    echo
-    if [ "$wallet_passphrase" != "$wallet_passphrase_confirm" ]; then
-        print_color "error" "Passphrases do not match. Exiting."
+default_install_dir="$HOME/x1_validator"
+print_color "prompt" "Validator Directory (press Enter for default: $default_install_dir):"
+read install_dir
+
+if [ -z "$install_dir" ]; then
+    install_dir=$default_install_dir
+fi
+
+if [ -d "$install_dir" ]; then
+    print_color "prompt" "Directory exists. Delete it? [y/n]"
+    read choice
+    if [ "$choice" == "y" ]; then
+        rm -rf "$install_dir" > /dev/null 2>&1
+        print_color "info" "Deleted $install_dir"
+    else
+        print_color "error" "Please choose a different directory."
         exit 1
     fi
-    wallet_passphrase_option=""  # Passphrase will be provided via stdin
+fi
+
+mkdir -p "$install_dir" > /dev/null 2>&1
+cd "$install_dir" || exit 1
+print_color "success" "Directory created: $install_dir"
+
+
+# Section 2: Install Rust
+print_color "info" "\n===== 2/10: Rust Installation ====="
+
+if ! command -v rustc &> /dev/null; then
+    print_color "info" "Installing Rust..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y > /dev/null 2>&1
+    source "$HOME/.cargo/env" > /dev/null 2>&1
 else
-    wallet_passphrase_option="--no-passphrase --no-bip39-passphrase"
+    print_color "success" "Rust is already installed: $(rustc --version)"
 fi
+print_color "success" "Rust installed."
 
-# Section 1: Install Dependencies
-print_color "info" "\n===== 1/11: Installing Dependencies ====="
+# Section 3: Install Solana CLI
+print_color "info" "\n===== 3/10: Solana CLI Installation ====="
 
-# Check and install dependencies
-dependencies=(curl wget jq bc screen)
-for dep in "${dependencies[@]}"; do
-    if ! command -v $dep &> /dev/null; then
-        print_color "info" "Installing $dep..."
-        sudo apt-get update && sudo apt-get install -y $dep
-        print_color "success" "$dep installed."
-    else
-        print_color "info" "$dep is already installed."
-    fi
-done
+print_color "info" "Installing Solana CLI..."
+sh -c "$(curl -sSfL https://release.solana.com/v1.18.25/install)" > /dev/null 2>&1 || {
+    print_color "error" "Solana CLI installation failed."
+    exit 1
+}
 
-# Section 2: Validator Directory Setup
-print_color "info" "\n===== 2/11: Validator Directory Setup ====="
-read -p "Validator Directory (press Enter for default: /root/x1_validator): " validator_dir
-validator_dir=${validator_dir:-/root/x1_validator}
-
-if [ -d "$validator_dir" ]; then
-    echo "Directory exists. Delete it? [y/n]"
-    read -p "" delete_choice
-    if [[ "$delete_choice" == "y" || "$delete_choice" == "Y" ]]; then
-        rm -rf "$validator_dir"
-        print_color "success" "Deleted $validator_dir"
-    else
-        print_color "error" "Directory already exists. Exiting."
-        exit 1
-    fi
+# Add Solana to PATH and reload
+if ! grep -q 'solana' ~/.profile; then
+    echo 'export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"' >> ~/.profile
 fi
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH" > /dev/null 2>&1
+print_color "success" "Solana CLI installed."
 
-mkdir -p "$validator_dir"
-print_color "success" "Directory created: $validator_dir"
+# Source the profile to update the current shell
+source ~/.profile
 
-# Section 3: Rust Installation
-print_color "info" "\n===== 3/11: Rust Installation ====="
-curl https://sh.rustup.rs -sSf | sh -s -- -y
-source $HOME/.cargo/env
-print_color "success" "Rust installed: $(rustc --version)"
+# Section 4: Switch to Xolana Network
+print_color "info" "\n===== 4/10: Switch to Xolana Network ====="
 
-# Section 4: Solana CLI Installation
-print_color "info" "\n===== 4/11: Solana CLI Installation ====="
-export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
-sh -c "$(curl -sSfL https://release.solana.com/v1.18.25/install)"
-print_color "success" "Solana CLI installed: $(solana --version)"
-
-# Section 5: Switch to Xolana Network
-print_color "info" "\n===== 5/11: Switch to Xolana Network ====="
-read -p "Enter the network RPC URL (default: http://xolana.xen.network:8899): " network_url
-network_url=${network_url:-http://xolana.xen.network:8899}
-
-solana config set --url "$network_url"
-print_color "success" "Switched to network: $network_url"
-
-# Section 6: Creating Wallets
-
-identity_keypair_path="$validator_dir/identity.json"
-vote_keypair_path="$validator_dir/vote-account-keypair.json"
-stake_keypair_path="$validator_dir/stake-account-keypair.json"
-withdrawer_keypair_path="$validator_dir/withdrawer-keypair.json"
-
-# Identity Keypair
-solana-keygen new $wallet_passphrase_option -o "$identity_keypair_path"
-
-# Vote Keypair (no passphrase)
-solana-keygen new --no-passphrase --no-bip39-passphrase -o "$vote_keypair_path"
-
-# Stake Keypair (no passphrase)
-solana-keygen new --no-passphrase --no-bip39-passphrase -o "$stake_keypair_path"
-
-# Withdrawer Keypair (no passphrase, created only if not exists)
-if [ ! -f "$withdrawer_keypair_path" ]; then
-    solana-keygen new --no-passphrase --no-bip39-passphrase -o "$withdrawer_keypair_path"
+solana config set -u http://xolana.xen.network:8899 > /dev/null 2>&1
+network_url=$(solana config get | grep 'RPC URL' | awk '{print $NF}')
+if [ "$network_url" != "http://xolana.xen.network:8899" ]; then
+    print_color "error" "Failed to switch to Xolana network."
+    exit 1
 fi
+print_color "success" "Switched to Xolana network."
 
-identity_pubkey=$(solana-keygen pubkey "$identity_keypair_path")
-vote_pubkey=$(solana-keygen pubkey "$vote_keypair_path")
-stake_pubkey=$(solana-keygen pubkey "$stake_keypair_path")
-withdrawer_pubkey=$(solana-keygen pubkey "$withdrawer_keypair_path")
+# Section 5: Wallets Creation
+print_color "info" "\n===== 5/10: Creating Wallets ====="
 
-solana config set --keypair "$identity_keypair_path"
+solana-keygen new --no-passphrase --outfile $install_dir/identity.json > /dev/null 2>&1
+identity_pubkey=$(solana-keygen pubkey $install_dir/identity.json)
 
-print_color "info" "\nPlease save the following keys:\n"
-print_color "info" "Identity Public Key: $identity_pubkey"
-print_color "info" "Vote Public Key: $vote_pubkey"
-print_color "info" "Stake Public Key: $stake_pubkey"
+solana-keygen new --no-passphrase --outfile $install_dir/vote.json > /dev/null 2>&1
+vote_pubkey=$(solana-keygen pubkey $install_dir/vote.json)
+
+solana-keygen new --no-passphrase --outfile $install_dir/stake.json > /dev/null 2>&1
+stake_pubkey=$(solana-keygen pubkey $install_dir/stake.json)
+
+solana-keygen new --no-passphrase --outfile $HOME/.config/solana/withdrawer.json > /dev/null 2>&1
+withdrawer_pubkey=$(solana-keygen pubkey $HOME/.config/solana/withdrawer.json)
+
+# Output wallet information
+print_color "success" "Wallets created successfully!"
+print_color "error" "********************************************************"
+print_color "info" "Identity Wallet Address: $identity_pubkey"
+print_color "info" "Vote Wallet Address: $vote_pubkey"
+print_color "info" "Stake Wallet Address: $stake_pubkey"
 print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
-print_color "prompt" "\nPress Enter after saving the keys."
-read -p ""
+print_color "info" " "
+print_color "info" "Private keys are stored in the following locations:"
+print_color "info" "Identity Private Key: $install_dir/identity.json"
+print_color "info" "Vote Private Key: $install_dir/vote.json"
+print_color "info" "Stake Private Key: $install_dir/stake.json"
+print_color "info" "Withdrawer Private Key: $HOME/.config/solana/withdrawer.json"
+print_color "error" "********************************************************"
+print_color "prompt" "IMPORTANT: After installation, make sure to save both the public addresses and private key files listed above in a secure location!"
 
-# Section 7: Requesting Faucet Funds
-print_color "info" "\n===== 7/11: Requesting Faucet Funds ====="
+# Section 6: Request Faucet Funds
+print_color "info" "\n===== 6/10: Requesting Faucet Funds ====="
 
-# Attempt to request funds from the faucet
-faucet_response=$(curl -s -X POST -H "Content-Type: application/json" -d '{"pubkey":"'"$identity_pubkey"'"}' https://xolana.xen.network/faucet)
-faucet_success=$(echo "$faucet_response" | jq -r '.success')
-faucet_message=$(echo "$faucet_response" | jq -r '.message')
+request_faucet() {
+    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$1\"}" https://xolana.xen.network/faucet)
+    if echo "$response" | grep -q "Please wait"; then
+        wait_message=$(echo "$response" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
+        print_color "error" "Faucet request failed: $wait_message"
+    elif echo "$response" | grep -q '"success":true'; then
+        print_color "success" "5 SOL requested successfully."
+    else
+        print_color "error" "Faucet request failed. Response: $response"
+    fi
+}
 
-if [ "$faucet_success" == "true" ]; then
-    print_color "success" "Faucet funds requested successfully."
+request_faucet $identity_pubkey
+print_color "info" "Waiting 30 seconds to verify balance..."
+sleep 30
+
+balance=$(solana balance $identity_pubkey | awk '{print $1}')
+if (( $(echo "$balance > 0" | bc -l) )); then
+    print_color "success" "Identity funded with $balance SOL."
 else
-    print_color "error" "Faucet request failed: $faucet_message."
-    print_color "info" "You can manually fund your Identity Wallet to proceed."
-    print_color "info" "Identity Wallet Address: $identity_pubkey"
-    print_color "prompt" "Press Enter once you have funded the wallet to continue."
-    read -p ""
+    print_color "error" "Failed to get SOL. Exiting."
+    exit 1
 fi
 
-# Verify that the Identity Wallet has sufficient balance
-identity_balance=$(solana balance $identity_pubkey | awk '{print $1}')
-min_balance_required=1  # Adjust as needed
+# Section 7: Create Vote Account with Commission 11%
+print_color "info" "\n===== 7/10: Creating Vote Account ====="
 
-while (( $(echo "$identity_balance < $min_balance_required" | bc -l) )); do
-    print_color "error" "Identity wallet balance is insufficient ($identity_balance SOL)."
-    print_color "prompt" "Please fund the Identity Wallet with at least $min_balance_required SOL."
-    print_color "prompt" "Press Enter after funding the wallet to check the balance again."
-    read -p ""
-    identity_balance=$(solana balance $identity_pubkey | awk '{print $1}')
-done
+solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 11 > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+    print_color "success" "Vote account created with 11% commission."
+else
+    print_color "error" "Failed to create vote account."
+    exit 1
+fi
 
-print_color "success" "Identity wallet has sufficient balance: $identity_balance SOL."
+# Section 8: Create and Fund Stake Account
+print_color "info" "\n===== 8/10: Creating Stake Account ====="
 
-# Section 8: Create Vote Account
-print_color "info" "\n===== 8/11: Creating Vote Account ====="
-solana create-vote-account "$vote_keypair_path" "$identity_pubkey" --commission 10 --authorized-withdrawer "$withdrawer_pubkey"
-print_color "success" "Vote account created with commission set to 10%."
+solana create-stake-account $install_dir/stake.json 5 > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+    print_color "success" "Stake account created and funded with 5 SOL."
+else
+    print_color "error" "Failed to create and fund stake account."
+    exit 1
+fi
 
-# Section 9: Create Stake Account and Delegate
-print_color "info" "\n===== 9/11: Creating Stake Account and Delegating ====="
-solana create-stake-account "$stake_keypair_path" 1 --withdraw-authority "$withdrawer_pubkey"
-solana delegate-stake "$stake_pubkey" "$vote_pubkey"
-print_color "success" "Stake account created and delegated."
+# Section 9: System Tuning
+print_color "info" "\n===== 9/10: System Tuning ====="
+print_color "info" "If needed, please provide admin password for system tuning."
 
-# Section 10: Create Systemd Service
-print_color "info" "\n===== 10/11: Setting Up Systemd Service ====="
+sudo bash -c "cat >/etc/sysctl.d/21-solana-validator.conf <<EOF
+net.core.rmem_default = 134217728
+net.core.rmem_max = 134217728
+net.core.wmem_default = 134217728
+net.core.wmem_max = 134217728
+vm.max_map_count = 1000000
+fs.nr_open = 1000000
+EOF"
+sudo sysctl -p /etc/sysctl.d/21-solana-validator.conf
 
-sudo tee /etc/systemd/system/solana-validator.service > /dev/null <<EOF
-[Unit]
-Description=Solana Validator
-After=network.target
+# Set ulimit for current session
+ulimit -n 1000000
 
-[Service]
-User=$(whoami)
-ExecStart=$(which solana-validator) \\
-    --identity "$identity_keypair_path" \\
-    --vote-account "$vote_keypair_path" \\
-    --rpc-bind-address 0.0.0.0 \\
-    --dynamic-port-range 8000-8020 \\
-    --entrypoint entrypoint.mainnet-beta.solana.com:8001 \\
-    --expected-genesis-hash "$(solana genesis-hash)" \\
-    --wal-recovery-mode skip_any_corrupted_record \\
-    --limit-ledger-size \\
-    --log /var/log/solana/solana-validator.log \\
-    --ledger "$validator_dir/ledger"
-Restart=
+# Ensure Solana CLI is in PATH
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
+
+print_color "success" "System tuned for validator performance."
+
+# Section 10: Create and Start Validator Service
+print_color "info" "\n===== 10/10: Finished ====="
+print_color "success" "\nX1 Validator setup complete!"
+print_color "success" "\nStart your X1 Validator by using the following command:"
+print_color "prompt" "\nexport PATH=\"\$HOME/.local/share/solana/install/active_release/bin:\$PATH\"; ulimit -n 1000000; solana-validator --identity $install_dir/identity.json --vote-account $install_dir/vote.json --rpc-port 8899 --entrypoint 216.202.227.220:8001 --full-rpc-api --log - --max-genesis-archive-unpacked-size 1073741824 --no-incremental-snapshots --require-tower --enable-rpc-transaction-history --enable-extended-tx-metadata-storage --skip-startup-ledger-verification --no-poh-speed-test --bind-address 0.0.0.0"
+print_color "info" "\n\n\n"
