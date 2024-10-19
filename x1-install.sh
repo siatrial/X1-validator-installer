@@ -269,7 +269,9 @@ read -r  # Wait for user input
 # Check balance and provide better error handling
 while true; do
     balance=$(solana balance "$identity_pubkey" 2>&1)
-    if [[ "$balance" == *"error"* ]]; then
+
+    # Check if the command returned an error
+    if [[ "$balance" == *"error"* || "$balance" == *"command not found"* ]]; then
         print_color "error" "Failed to check wallet balance: $balance"
         exit 1
     elif [[ "$balance" == "0 SOL" ]]; then
@@ -281,6 +283,8 @@ while true; do
         break
     fi
 done
+
+# Continue with the next steps after successful funding
 
 # Section 7: Create Vote Account - Validate if account exists and has correct owner
 print_color "info" "\n===== 7/10: Creating Vote Account ====="
