@@ -5,7 +5,7 @@ set -e
 function print_color {
     case $1 in
         "info")
-            echo -e "\033[1;34m$2\033[0m" >&2  # Blue for informational
+            echo -e "\033[1;36m$2\033[0m" >&2  # Cyan for informational
             ;;
         "success")
             echo -e "\033[1;32m$2\033[0m" >&2  # Green for success
@@ -14,7 +14,7 @@ function print_color {
             echo -e "\033[1;31m$2\033[0m" >&2  # Red for errors
             ;;
         "prompt")
-            echo -e "\033[1;33m$2\033[0m" >&2  # Yellow for user prompts
+            echo -e "\033[1;35m$2\033[0m" >&2  # Magenta for user prompts
             ;;
     esac
 }
@@ -36,7 +36,7 @@ else
 fi
 
 # Section 1: Install Dependencies
-print_color "info" "\n===== 1/10: Installing Dependencies ====="
+print_color "info" "\n===== 1/11: Installing Dependencies ====="
 
 # Function to install packages
 function install_package {
@@ -69,7 +69,7 @@ for cmd in "${dependencies[@]}"; do
 done
 
 # Section 2: Setup Validator Directory
-print_color "info" "\n===== 2/10: Validator Directory Setup ====="
+print_color "info" "\n===== 2/11: Validator Directory Setup ====="
 
 default_install_dir="$HOME/x1_validator"
 print_color "prompt" "Validator Directory (press Enter for default: $default_install_dir):"
@@ -96,7 +96,7 @@ cd "$install_dir" || exit 1
 print_color "success" "Directory created: $install_dir"
 
 # Section 3: Install Rust
-print_color "info" "\n===== 3/10: Rust Installation ====="
+print_color "info" "\n===== 3/11: Rust Installation ====="
 
 if ! command -v rustc &> /dev/null; then
     print_color "info" "Installing Rust..."
@@ -112,7 +112,7 @@ else
 fi
 
 # Section 4: Install Solana CLI
-print_color "info" "\n===== 4/10: Solana CLI Installation ====="
+print_color "info" "\n===== 4/11: Solana CLI Installation ====="
 
 # Define the Solana CLI version
 SOLANA_CLI_VERSION="v1.18.25"
@@ -132,7 +132,7 @@ fi
 print_color "success" "Solana CLI installed: $(solana --version)"
 
 # Section 5: Switch to Xolana Network
-print_color "info" "\n===== 5/10: Switch to Xolana Network ====="
+print_color "info" "\n===== 5/11: Switch to Xolana Network ====="
 
 default_network_url="http://xolana.xen.network:8899"
 print_color "prompt" "Enter the network RPC URL (default: $default_network_url):"
@@ -150,7 +150,7 @@ fi
 print_color "success" "Switched to network: $network_url"
 
 # Section 6: Wallets Creation
-print_color "info" "\n===== 6/10: Creating Wallets ====="
+print_color "info" "\n===== 6/11: Creating Wallets ====="
 
 # Function to create a wallet if it doesn't exist
 function create_wallet {
@@ -197,7 +197,7 @@ print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
 # Section 7: Requesting Faucet Funds
-print_color "info" "\n===== 7/10: Requesting Faucet Funds ====="
+print_color "info" "\n===== 7/11: Requesting Faucet Funds ====="
 attempt=0
 max_attempts=5
 cooldown_wait_time=480  # 8 minutes in seconds
@@ -256,10 +256,10 @@ done
 if [ "$attempt" -eq "$max_attempts" ]; then
     print_color "error" "Failed to fund identity wallet after $max_attempts attempts. Exiting."
     exit 1
-    fi
+fi
 
 # Section 8: Create Vote Account
-print_color "info" "\n===== 8/10: Creating Vote Account ====="
+print_color "info" "\n===== 8/11: Creating Vote Account ====="
 
 vote_account_exists=$(solana vote-account $vote_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
 if [ "$vote_account_exists" == "true" ]; then
@@ -272,12 +272,13 @@ if [ "$vote_account_exists" == "true" ]; then
         print_color "info" "Vote account already exists and is owned by the correct identity."
     fi
 else
-    solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 5
+    create_vote_output=$(solana create-vote-account $install_dir/vote.json $install_dir/identity.json $withdrawer_pubkey --commission 5)
+    print_color "info" "$create_vote_output"
     print_color "success" "Vote account created."
 fi
 
 # Section 9: Create Stake Account
-print_color "info" "\n===== 9/10: Creating Stake Account ====="
+print_color "info" "\n===== 9/11: Creating Stake Account ====="
 
 stake_account_exists=$(solana stake-account $stake_pubkey > /dev/null 2>&1 && echo "true" || echo "false")
 if [ "$stake_account_exists" == "true" ]; then
@@ -297,10 +298,12 @@ else
     # Ensure stake amount is positive
     if (( $(echo "$stake_amount > 0" | bc -l) )); then
         # Create stake account from identity keypair
-        solana create-stake-account $install_dir/stake.json $stake_amount --from $install_dir/identity.json
+        create_stake_output=$(solana create-stake-account $install_dir/stake.json $stake_amount --from $install_dir/identity.json)
+        print_color "info" "$create_stake_output"
         print_color "success" "Stake account created with $stake_amount SOL."
         # Delegate stake to the vote account
-        solana delegate-stake $install_dir/stake.json $install_dir/vote.json
+        delegate_stake_output=$(solana delegate-stake $install_dir/stake.json $install_dir/vote.json)
+        print_color "info" "$delegate_stake_output"
         print_color "success" "Stake account delegated to vote account: $vote_pubkey"
     else
         print_color "error" "Insufficient funds to create stake account."
@@ -309,7 +312,7 @@ else
 fi
 
 # Section 10: Start Validator Without Systemd
-print_color "info" "\n===== 10/10: Starting Validator ====="
+print_color "info" "\n===== 10/11: Starting Validator ====="
 
 # Prompt for unique RPC port
 print_color "prompt" "\nPlease enter a unique RPC port (default is 8899):"
@@ -335,19 +338,19 @@ ledger_dir="$install_dir/ledger"
 mkdir -p "$ledger_dir"
 
 # Build the solana-validator command
-validator_cmd="$(which solana-validator) \\
-    --identity $install_dir/identity.json \\
-    --vote-account $install_dir/vote.json \\
-    --ledger $ledger_dir \\
-    --rpc-port $rpc_port \\
-    --entrypoint $entrypoint \\
-    --full-rpc-api \\
-    --log $install_dir/validator.log \\
-    --max-genesis-archive-unpacked-size 1073741824 \\
-    --require-tower \\
-    --enable-rpc-transaction-history \\
-    --enable-extended-tx-metadata-storage \\
-    --bind-address 0.0.0.0 \\
+validator_cmd="$(which solana-validator) \
+    --identity $install_dir/identity.json \
+    --vote-account $install_dir/vote.json \
+    --ledger $ledger_dir \
+    --rpc-port $rpc_port \
+    --entrypoint $entrypoint \
+    --full-rpc-api \
+    --log $install_dir/validator.log \
+    --max-genesis-archive-unpacked-size 1073741824 \
+    --require-tower \
+    --enable-rpc-transaction-history \
+    --enable-extended-tx-metadata-storage \
+    --bind-address 0.0.0.0 \
     $additional_options"
 
 # Run the validator in a detached screen session
@@ -358,3 +361,38 @@ print_color "success" "Validator started in a detached screen session."
 print_color "info" "You can attach to the session using: screen -r solana-validator"
 print_color "info" "To detach from the session, press: Ctrl+A then D"
 print_color "info" "Logs are being written to: $install_dir/validator.log"
+
+# Section 11: Testing and Verification
+print_color "info" "\n===== 11/11: Testing and Verification ====="
+
+# Give some time for the validator to start
+print_color "info" "Waiting for the validator to start..."
+sleep 10
+
+# Display account balances
+print_color "info" "Checking account balances..."
+
+identity_balance=$(solana balance $install_dir/identity.json)
+print_color "info" "Identity Account Balance: $identity_balance"
+
+withdrawer_balance=$(solana balance $HOME/.config/solana/withdrawer.json)
+print_color "info" "Withdrawer Account Balance: $withdrawer_balance"
+
+# Display stake account details
+print_color "info" "\nStake Account Details:"
+solana stake-account $install_dir/stake.json
+
+# Display vote account details
+print_color "info" "\nVote Account Details:"
+solana vote-account $install_dir/vote.json
+
+# Check validator status
+print_color "info" "\nChecking validator status..."
+validator_info=$(solana validators --output json)
+if echo "$validator_info" | jq -e '.currentValidators[] | select(.identityPubkey == "'"$identity_pubkey"'")' > /dev/null; then
+    print_color "success" "Validator is active in the network."
+else
+    print_color "error" "Validator not found in current validators. It might take a few minutes for the validator to appear."
+fi
+
+print_color "success" "\nAll tests completed."
