@@ -238,34 +238,35 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
-# Section 6: Manual Funding Instruction
-print_color "info" "\n===== 6/10: Funding Identity Wallet ====="
+# Section 6: Request Faucet Funds
+print_color "info" "\n===== 6/10: Requesting Faucet Funds ====="
 
-print_color "info" "Use the following public key to receive funds:"
-print_color "info" "$identity_pubkey"
-print_color "info" "To fund your wallet, visit the Xolana Faucet at: https://xolana.xen.network/web_faucet"
-print_color "info" "Please request at least 5 SOL from the faucet."
-
-print_color "prompt" "Press Enter once you have requested and received at least 5 SOL in the Identity wallet."
-read -r  # Wait for user input after they fund the wallet
-
-# Check balance and provide better error handling
-while true; do
-    balance=$(solana balance "$identity_pubkey" 2>&1)
-
-    # Check if the command returned an error
-    if [[ "$balance" == *"error"* || "$balance" == *"command not found"* ]]; then
-        print_color "error" "Failed to check wallet balance: $balance"
-        exit 1
-    elif [[ "$balance" == "0 SOL" ]]; then
-        print_color "error" "Identity wallet still has 0 SOL. Please ensure you have requested and received at least 5 SOL."
-        print_color "prompt" "Press Enter to check the balance again."
-        read -r  # Wait for user to confirm they've funded the wallet
+request_faucet() {
+    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$1\"}" https://xolana.xen.network/faucet)
+    if echo "$response" | grep -q "Please wait"; then
+        wait_message=$(echo "$response" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
+        print_color "error" "Faucet request failed: $wait_message"
+    elif echo "$response" | grep -q '"success":true'; then
+        print_color "success" "5 SOL requested successfully."
     else
-        print_color "success" "Identity wallet funded with $balance."
-        break
+        print_color "error" "Faucet request failed. Response: $response"
     fi
-done
+}
+
+# Request funds from the faucet for the identity public key
+request_faucet $identity_pubkey
+
+print_color "info" "Waiting 30 seconds to verify balance..."
+sleep 30
+
+# Check if the balance has been updated
+balance=$(solana balance $identity_pubkey 2>&1)
+if [[ "$balance" != "0 SOL" ]]; then
+    print_color "success" "Identity wallet funded with $balance."
+else
+    print_color "error" "Failed to receive 5 SOL. Exiting."
+    exit 1
+fi
 
 # Section 7: Start Validator
 
