@@ -29,9 +29,8 @@ if [[ "$passphrase_choice" == "y" || "$passphrase_choice" == "Y" ]]; then
         print_color "error" "Passphrases do not match. Exiting."
         exit 1
     fi
-    wallet_passphrase_option="--passphrase"
+    wallet_passphrase_option=""
 else
-    wallet_passphrase=""
     wallet_passphrase_option="--no-passphrase"
 fi
 
@@ -78,7 +77,7 @@ print_color "success" "Rust installed: $(rustc --version)"
 
 # Section 4: Solana CLI Installation
 print_color "info" "\n===== 4/11: Solana CLI Installation ====="
-export PATH="/root/.local/share/solana/install/active_release/bin:$PATH"
+export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
 sh -c "$(curl -sSfL https://release.solana.com/v1.18.25/install)"
 print_color "success" "Solana CLI installed: $(solana --version)"
 
@@ -99,13 +98,20 @@ vote_keypair_path="$validator_dir/vote-account-keypair.json"
 stake_keypair_path="$validator_dir/stake-account-keypair.json"
 withdrawer_keypair_path="$validator_dir/withdrawer-keypair.json"
 
-solana-keygen new $wallet_passphrase_option --outfile "$identity_keypair_path" --no-bip39-passphrase
-solana-keygen new --no-passphrase --outfile "$vote_keypair_path" --no-bip39-passphrase
-solana-keygen new --no-passphrase --outfile "$stake_keypair_path" --no-bip39-passphrase
+# Create Identity Keypair
+solana-keygen new $wallet_passphrase_option --no-bip39-passphrase -o "$identity_keypair_path" <<< "$wallet_passphrase"
+
+# Create Vote Keypair
+solana-keygen new --no-passphrase --no-bip39-passphrase -o "$vote_keypair_path"
+
+# Create Stake Keypair
+solana-keygen new --no-passphrase --no-bip39-passphrase -o "$stake_keypair_path"
+
+# Create Withdrawer Keypair (if not exists)
 if [ ! -f "$withdrawer_keypair_path" ]; then
-    solana-keygen new --no-passphrase --outfile "$withdrawer_keypair_path" --no-bip39-passphrase
+    solana-keygen new --no-passphrase --no-bip39-passphrase -o "$withdrawer_keypair_path"
 else
-    print_color "warning" "Withdrawer wallet already exists: $(solana-keygen pubkey $withdrawer_keypair_path)"
+    print_color "warning" "Withdrawer wallet already exists: $(solana-keygen pubkey "$withdrawer_keypair_path")"
 fi
 
 identity_pubkey=$(solana-keygen pubkey "$identity_keypair_path")
@@ -166,12 +172,10 @@ solana create-stake-account "$stake_keypair_path" 1 --withdraw-authority "$withd
 solana delegate-stake "$stake_pubkey" "$vote_pubkey"
 print_color "success" "Stake account created and delegated."
 
-# Section 10: Create Systemd Service (or Alternative)
-print_color "info" "\n===== 10/11: Setting Up Validator Service ====="
+# Section 10: Create Systemd Service
+print_color "info" "\n===== 10/11: Setting Up Systemd Service ====="
 
-# Check if systemd is available
-if pidof systemd &> /dev/null; then
-    sudo tee /etc/systemd/system/solana-validator.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/solana-validator.service > /dev/null <<EOF
 [Unit]
 Description=Solana Validator
 After=network.target
@@ -187,7 +191,8 @@ ExecStart=$(which solana-validator) \\
     --expected-genesis-hash "$(solana genesis-hash)" \\
     --wal-recovery-mode skip_any_corrupted_record \\
     --limit-ledger-size \\
-    --log /var/log/solana/solana-validator.log
+    --log /var/log/solana/solana-validator.log \\
+    --ledger "$validator_dir/ledger"
 Restart=always
 RestartSec=3
 LimitNOFILE=500000
@@ -196,48 +201,17 @@ LimitNOFILE=500000
 WantedBy=multi-user.target
 EOF
 
-    print_color "success" "Systemd service file created at /etc/systemd/system/solana-validator.service"
+print_color "success" "Systemd service file created at /etc/systemd/system/solana-validator.service"
 
-    # Section 11: Start the Validator Using systemd
-    print_color "info" "\n===== 11/11: Starting the Validator ====="
-    sudo systemctl daemon-reload
-    sudo systemctl enable solana-validator
-    sudo systemctl start solana-validator
-    print_color "success" "Solana validator service started."
-else
-    # If systemd is not available, use screen session
-    print_color "warning" "Systemd not detected. Setting up validator in a screen session."
-
-    # Create a script to run the validator
-    validator_script="$validator_dir/run-validator.sh"
-    cat > "$validator_script" <<EOF
-#!/bin/bash
-$(which solana-validator) \\
-    --identity "$identity_keypair_path" \\
-    --vote-account "$vote_keypair_path" \\
-    --rpc-bind-address 0.0.0.0 \\
-    --dynamic-port-range 8000-8020 \\
-    --entrypoint entrypoint.mainnet-beta.solana.com:8001 \\
-    --expected-genesis-hash "$(solana genesis-hash)" \\
-    --wal-recovery-mode skip_any_corrupted_record \\
-    --limit-ledger-size \\
-    --log - \\
-    --ledger "$validator_dir/ledger"
-EOF
-    chmod +x "$validator_script"
-
-    # Start the validator in a detached screen session
-    screen -dmS solana-validator "$validator_script"
-    print_color "success" "Solana validator started in a screen session named 'solana-validator'."
-fi
+# Section 11: Start the Validator
+print_color "info" "\n===== 11/11: Starting the Validator ====="
+sudo systemctl daemon-reload
+sudo systemctl enable solana-validator
+sudo systemctl start solana-validator
+print_color "success" "Solana validator service started."
 
 print_color "info" "\n===== Setup Complete ====="
 print_color "info" "You can check the status of your validator with:"
-print_color "info" "  solana validators"
-if pidof systemd &> /dev/null; then
-    print_color "info" "You can view logs with:"
-    print_color "info" "  sudo journalctl -u solana-validator -f"
-else
-    print_color "info" "You can reattach to the screen session with:"
-    print_color "info" "  screen -r solana-validator"
-fi
+print_color "info" "  sudo systemctl status solana-validator"
+print_color "info" "You can view logs with:"
+print_color "info" "  sudo journalctl -u solana-validator -f"
