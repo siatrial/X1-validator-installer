@@ -171,17 +171,18 @@ print_color "info" "\n===== 6/10: Creating Wallets ====="
 function create_wallet {
     local wallet_path=$1
     local wallet_name=$2
+    local pubkey
     if [ ! -f "$wallet_path" ]; then
         solana-keygen new $passphrase_option --outfile "$wallet_path" > /dev/null 2>&1
-        local pubkey=$(solana-keygen pubkey "$wallet_path")
+        pubkey=$(solana-keygen pubkey "$wallet_path")
         if [ -z "$pubkey" ]; then
-            print_color "error" "Error creating $wallet_name wallet"
+            print_color "error" "Error creating $wallet_name wallet" >&2
             exit 1
         fi
-        print_color "success" "$wallet_name wallet created: $pubkey"
+        print_color "success" "$wallet_name wallet created: $pubkey" >&2
     else
-        local pubkey=$(solana-keygen pubkey "$wallet_path")
-        print_color "info" "$wallet_name wallet already exists: $pubkey"
+        pubkey=$(solana-keygen pubkey "$wallet_path")
+        print_color "info" "$wallet_name wallet already exists: $pubkey" >&2
     fi
     echo "$pubkey"
 }
@@ -205,14 +206,23 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
-# Section 7: Request Faucet Funds - Add retry logic
+# Section 7: Requesting Faucet Funds
 print_color "info" "\n===== 7/10: Requesting Faucet Funds ====="
 attempt=0
 max_attempts=5
 while [ "$attempt" -lt "$max_attempts" ]; do
     response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$identity_pubkey\"}" https://xolana.xen.network/faucet)
-    success=$(echo "$response" | jq -r '.success')
-    message=$(echo "$response" | jq -r '.message')
+    print_color "info" "Faucet response: $response" >&2
+
+    # Check if response is valid JSON
+    if echo "$response" | jq empty >/dev/null 2>&1; then
+        success=$(echo "$response" | jq -r '.success')
+        message=$(echo "$response" | jq -r '.message')
+    else
+        print_color "error" "Invalid JSON response from faucet: $response"
+        success="false"
+        message="Invalid JSON response"
+    fi
 
     if [ "$success" == "true" ]; then
         print_color "success" "5 SOL requested successfully."
@@ -222,7 +232,7 @@ while [ "$attempt" -lt "$max_attempts" ]; do
         print_color "error" "Faucet request failed. Response: $response"
     fi
 
-    balance=$(solana balance $identity_pubkey)
+    balance=$(solana balance $identity_pubkey || echo "0 SOL")
     if [[ "$balance" != *"0 SOL"* ]]; then
         print_color "success" "Identity funded with $balance."
         break
@@ -236,7 +246,7 @@ done
 if [ "$attempt" -eq "$max_attempts" ]; then
     print_color "error" "Failed to fund identity wallet after $max_attempts attempts. Exiting."
     exit 1
-fi
+    fi
 
 # Section 8: Create Vote Account - Validate if account exists and has correct owner
 print_color "info" "\n===== 8/10: Creating Vote Account ====="
