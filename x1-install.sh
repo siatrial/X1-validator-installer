@@ -244,8 +244,10 @@ print_color "info" "\n===== 6/10: Funding Identity Wallet ====="
 print_color "info" "Use the following public key to receive funds:"
 print_color "info" "$identity_pubkey"
 print_color "info" "To fund your wallet, visit the Xolana Faucet at: https://xolana.xen.network/web_faucet"
-print_color "prompt" "Press Enter once you have funded the Identity wallet with at least 5 SOL."
-read -r  # Wait for user input
+print_color "info" "Please request at least 5 SOL from the faucet."
+
+print_color "prompt" "Press Enter once you have requested and received at least 5 SOL in the Identity wallet."
+read -r  # Wait for user input after they fund the wallet
 
 # Check balance and provide better error handling
 while true; do
@@ -256,8 +258,8 @@ while true; do
         print_color "error" "Failed to check wallet balance: $balance"
         exit 1
     elif [[ "$balance" == "0 SOL" ]]; then
-        print_color "error" "Identity wallet still has 0 SOL. Please ensure you have sent at least 5 SOL to $identity_pubkey."
-        print_color "prompt" "Press Enter to check again once you've funded the wallet."
+        print_color "error" "Identity wallet still has 0 SOL. Please ensure you have requested and received at least 5 SOL."
+        print_color "prompt" "Press Enter to check the balance again."
         read -r  # Wait for user to confirm they've funded the wallet
     else
         print_color "success" "Identity wallet funded with $balance."
