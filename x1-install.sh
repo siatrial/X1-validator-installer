@@ -238,35 +238,6 @@ print_color "info" "Withdrawer Public Key: $withdrawer_pubkey"
 print_color "prompt" "\nPress Enter after saving the keys."
 read -r
 
-# Section 6: Request Faucet Funds
-print_color "info" "\n===== 6/10: Requesting Faucet Funds ====="
-
-request_faucet() {
-    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$1\"}" https://xolana.xen.network/faucet)
-    if echo "$response" | grep -q "Please wait"; then
-        wait_message=$(echo "$response" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
-        print_color "error" "Faucet request failed: $wait_message"
-    elif echo "$response" | grep -q '"success":true'; then
-        print_color "success" "5 SOL requested successfully."
-    else
-        print_color "error" "Faucet request failed. Response: $response"
-    fi
-}
-
-# Request funds from the faucet for the identity public key
-request_faucet $identity_pubkey
-
-print_color "info" "Waiting 30 seconds to verify balance..."
-sleep 30
-
-# Check if the balance has been updated
-balance=$(solana balance $identity_pubkey 2>&1)
-if [[ "$balance" != "0 SOL" ]]; then
-    print_color "success" "Identity wallet funded with $balance."
-else
-    print_color "error" "Failed to receive 5 SOL. Exiting."
-    exit 1
-fi
 
 # Section 7: Start Validator
 
