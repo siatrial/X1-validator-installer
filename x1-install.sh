@@ -242,16 +242,30 @@ read -r
 print_color "info" "\n===== 6/10: Requesting Faucet Funds ====="
 
 request_faucet() {
-    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$1\"}" https://xolana.xen.network/faucet)
-    if echo "$response" | grep -q "Please wait"; then
-        wait_message=$(echo "$response" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p')
-        print_color "error" "Faucet request failed: $wait_message"
-    elif echo "$response" | grep -q '"success":true'; then
-        print_color "success" "5 SOL requested successfully."
+    # New faucet URL
+    faucet_url="https://xolana.xen.network/web_faucet"
+
+    # Make the POST request to the faucet
+    response=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"pubkey\":\"$1\"}" "$faucet_url")
+
+    # Check if response is valid JSON
+    if echo "$response" | jq empty > /dev/null 2>&1; then
+        # Process the response as JSON
+        if echo "$response" | grep -q '"success":true'; then
+            print_color "success" "5 SOL requested successfully."
+        else
+            # Extract the message field to show specific error
+            error_message=$(echo "$response" | jq -r '.message // "Unknown error"')
+            print_color "error" "Faucet request failed. Error: $error_message"
+        fi
     else
-        print_color "error" "Faucet request failed. Response: $response"
+        # Handle case where the response is not valid JSON
+        print_color "error" "Unexpected response from faucet: $response"
     fi
 }
+
+
+
 
 # Request funds from the faucet for the identity public key
 request_faucet $identity_pubkey
